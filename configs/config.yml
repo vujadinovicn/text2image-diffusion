@@ -1,0 +1,8 @@
+image_size: 28
+batch_size: 128
+n_epochs: 5
+n_epochs_decay: 5
+loss_type: "l2"          # "l1" | "l2" 
+lr: 1e-3
+lr_policy: "cosine"  # "linear" | "cosine" | "quadratic"
+lr_decay_iters: 2
