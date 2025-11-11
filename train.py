@@ -56,7 +56,8 @@ def train(config):
 
         avg_loss = total_loss / len(train_loader)
         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_loss:.4f}")
-        torch.save(model.state_dict(), f"{checkpoint_folder}/model_epoch_{epoch+1}.pth")
+        if (epoch+1)%10 == 0:
+            torch.save(model.state_dict(), f"{checkpoint_folder}/model_epoch_{epoch+1}.pth")
 
 if __name__ == "__main__":
     config = parse_config('config/mnist.yml')
