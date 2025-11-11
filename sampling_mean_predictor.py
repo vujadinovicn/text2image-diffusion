@@ -20,13 +20,14 @@ model.load_state_dict(torch.load(checkpoint_path))
 model.eval()
 
 beta_t, alpha_t, alpha_bar_t, sigma_t = get_useful_values(t, **config['diffusion_params'])
+sigma_t = sigma_t.to(device)
 
 generated_images = []
-x = torch.randn(1, 1, 32, 32) 
+x = torch.randn(1, 1, 32, 32).to(device) 
 for i in tqdm(reversed(range(T)), total=T):
     mu_theta = model(x, t[i].unsqueeze(0))
     if i>0:
-        x = mu_theta + sigma_t[i] * torch.randn_like(x)
+        x = mu_theta + sigma_t[i] * torch.randn_like(x).to(device)
     else:
         x = mu_theta
     if i % 100 == 0 or i == T-1:
