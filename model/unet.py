@@ -107,7 +107,7 @@ class UNet(nn.Module):
     def __init__(self, 
                  resolutions_list = [32, 16, 8, 4],
                  in_channels = 1,
-                 out_channel_multipliers = [1, 2, 4, 8],
+                 out_channel_multipliers = [2, 4, 8, 16],
                  starting_channels = 64,
                  num_resnet_blocks = 2,
                  attention_resolutions = [16],
@@ -191,8 +191,6 @@ class UNet(nn.Module):
             t_emb_dim = T_dim
         )
 
-###########################################
-
         # Upsampling layers
         self.upsample_resnet_layers = nn.ModuleList()
         for i in reversed(range(len(resolutions_list))): #i=3,2,1,0
@@ -212,6 +210,13 @@ class UNet(nn.Module):
                     
                 print(f"res: {res}, in_channel: {in_channel}, out_channels: {starting_channels * out_channels}")
 
+                # Attention Block
+                if res in attention_resolutions:
+                    attn_layer = AttentionBlock(
+                        in_channels = starting_channels * out_channel_multipliers[i]
+                    )
+                    resnet_per_resolution.append(attn_layer)
+
                 # Residual Block
                 layer = ResidualBlock(
                     in_channels = in_channel,
@@ -219,13 +224,6 @@ class UNet(nn.Module):
                     t_emb_dim = T_dim
                 )
                 resnet_per_resolution.append(layer)
-
-                # Attention Block
-                if res in attention_resolutions:
-                    attn_layer = AttentionBlock(
-                        in_channels = starting_channels * out_channels
-                    )
-                    resnet_per_resolution.append(attn_layer)
                 
             
             # Append all blocks for this resolution 
@@ -240,12 +238,10 @@ class UNet(nn.Module):
             upsample_layer = conv3x3_doublesize(in_ch, out_ch)
             self.upsize_layers.append(upsample_layer)
 
-###########################################
-
         # output layers
-        self.output_group_norm = nn.GroupNorm(num_groups=32, num_channels=starting_channels)
+        self.output_group_norm = nn.GroupNorm(num_groups=32, num_channels=starting_channels*out_channel_multipliers[0])
         self.output_activation = nn.SiLU()
-        self.output_conv = conv3x3_samesize(starting_channels, in_channels)
+        self.output_conv = conv3x3_samesize(starting_channels*out_channel_multipliers[0], in_channels)
 
     def forward(self, x, t):
         # x: [B, C_in, H, W]
@@ -292,8 +288,13 @@ class UNet(nn.Module):
                 if isinstance(layer, ResidualBlock):
                     h_skip = hs.pop()
                     h = torch.cat([h, h_skip], dim=1)   # h: [B, 2C, H, W]
-                print("--->",h.shape)
-                h = layer(h, t_emb)                  # h: [B, C, H, W]
+                    print("residual")
+                    print("--->",h.shape)
+                    h = layer(h, t_emb)                  # h: [B, C, H, W]
+                else:
+                    print("attention")
+                    print("--->",h.shape)
+                    h = layer(h)                        # h: [B, C, H, W]
 
             # Upsampling Layer (except for last resolution)
             if i != 0:
@@ -310,14 +311,16 @@ class UNet(nn.Module):
         return h                               # out: [B, C_in, H, W]
 
 # Testing the UNet model
-# if __name__ == "__main__":
-#     model = UNet()
-#     # print(model)
-#     x = torch.randn(4, 1, 32, 32)  # batch of 4, 1 channel, 32x32 images
-#     t = torch.randint(0, 1000, (4,))  # batch of 4 time steps
-#     print(t.shape)
-#     out = model(x, t)
-#     print(out.shape)  # should be [4, 1, 32, 32]
+if __name__ == "__main__":
+    model = UNet(resolutions_list=[32,16,8,4,2,1],
+                 in_channels=1,
+                 out_channel_multipliers=[1,2,3,4,5,6],)
+    # print(model)
+    x = torch.randn(4, 1, 32, 32)  # batch of 4, 1 channel, 32x32 images
+    t = torch.randint(0, 1000, (4,))  # batch of 4 time steps
+    print(t.shape)
+    out = model(x, t)
+    print(out.shape)  # should be [4, 1, 32, 32]
 
 # TO DO: remove print statements after debugging
 # try denoising autoencoder to verify the model works
