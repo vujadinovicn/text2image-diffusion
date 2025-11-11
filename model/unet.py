@@ -208,7 +208,7 @@ class UNet(nn.Module):
                 else:
                     out_channels = out_channel_multipliers[i]
                     
-                print(f"res: {res}, in_channel: {in_channel}, out_channels: {starting_channels * out_channels}")
+                # print(f"res: {res}, in_channel: {in_channel}, out_channels: {starting_channels * out_channels}")
 
                 # Attention Block
                 if res in attention_resolutions:
@@ -234,7 +234,7 @@ class UNet(nn.Module):
         for i in reversed(range(len(resolutions_list) - 1)): 
             in_ch = starting_channels * out_channel_multipliers[i] * 2  # due to skip connection
             out_ch = starting_channels * out_channel_multipliers[i]
-            print(f"Upsample Layer {i}: in_ch: {in_ch}, out_ch: {out_ch}, resolution: {resolutions_list[i]}")
+            # print(f"Upsample Layer {i}: in_ch: {in_ch}, out_ch: {out_ch}, resolution: {resolutions_list[i]}")
             upsample_layer = conv3x3_doublesize(in_ch, out_ch)
             self.upsize_layers.append(upsample_layer)
 
@@ -255,7 +255,7 @@ class UNet(nn.Module):
         h = self.input_conv(x)               # h: [B, C_start, H, W]
 
         # Downsampling 
-        print("downsampling")
+        # print("downsampling")
         hs = []
         for i in range(len(self.resolutions_list)):
             resnet_blocks = self.downsample_resnet_layers[i]
@@ -279,7 +279,7 @@ class UNet(nn.Module):
         h = self.mid_attn(h)                 # h: [B, C, H, W]
         h = self.mid_resnet2(h, t_emb)       # h: [B, C, H, W]
 
-        print("upsampling")
+        # print("upsampling")
         # Upsampling
         for n,i in enumerate(reversed(range(len(self.resolutions_list)))):
             resnet_blocks = self.upsample_resnet_layers[n]
@@ -288,12 +288,12 @@ class UNet(nn.Module):
                 if isinstance(layer, ResidualBlock):
                     h_skip = hs.pop()
                     h = torch.cat([h, h_skip], dim=1)   # h: [B, 2C, H, W]
-                    print("residual")
-                    print("--->",h.shape)
+                    # print("residual")
+                    # print("--->",h.shape)
                     h = layer(h, t_emb)                  # h: [B, C, H, W]
                 else:
-                    print("attention")
-                    print("--->",h.shape)
+                    # print("attention")
+                    # print("--->",h.shape)
                     h = layer(h)                        # h: [B, C, H, W]
 
             # Upsampling Layer (except for last resolution)
@@ -314,6 +314,8 @@ class UNet(nn.Module):
 if __name__ == "__main__":
     model = UNet(resolutions_list=[32,16,8,4,2,1],
                  in_channels=1,
+                starting_channels=128,
+                attention_resolutions=[16,8,4],
                  out_channel_multipliers=[1,2,3,4,5,6],)
     # print(model)
     x = torch.randn(4, 1, 32, 32)  # batch of 4, 1 channel, 32x32 images
