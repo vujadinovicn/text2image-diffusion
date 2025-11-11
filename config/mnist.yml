@@ -9,12 +9,13 @@ model:
   T_dim: 256
 
 train:
-  lr : 1e-4
+  lr : 0.0001
   epochs: 10
   batch_size: 32
   loss: 'mean_predictor_loss'
+  checkpoint_folder: '../checkpoints/'
 
 diffusion_params:
-  beta_1: 10e-4
+  beta_1: 0.001
   beta_T: 0.02
   T: 1000

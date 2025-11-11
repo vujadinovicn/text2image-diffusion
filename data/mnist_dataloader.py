@@ -2,7 +2,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, transforms
 
 class MNISTDataset(Dataset):
-    def __init__(self, split="train"):
+    def __init__(self, split="train", allowed_classes=[3]):
         self.transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.5,), (0.5,)), # Normalize to [-1, 1]
@@ -15,6 +15,8 @@ class MNISTDataset(Dataset):
             train = False
 
         self.mnist_data = datasets.MNIST(root='./data/download', train=train, download=True, transform=self.transform)
+        # Filter to only include allowed classes
+        self.mnist_data = [(img, label) for img, label in self.mnist_data if label in allowed_classes]
 
     def __len__(self):
         return len(self.mnist_data)

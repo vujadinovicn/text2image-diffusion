@@ -30,9 +30,11 @@ def conv1x1_samesize(in_channels, out_channels):
 
 def sinsoidal_embedding(timesteps, dim=256):
     # timesteps: [B]
+    device = timesteps.device
     half_dim = dim // 2
     emb = torch.log(torch.tensor(10000.0)) / (half_dim - 1)
-    emb = torch.exp(torch.arange(half_dim, dtype=torch.float32) * -emb)
+    emb = emb.to(device)
+    emb = torch.exp(torch.arange(half_dim, dtype=torch.float32, device=device) * -emb)
     emb = timesteps[:, None].float() * emb[None, :]
     emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
     return emb  # [B, dim]

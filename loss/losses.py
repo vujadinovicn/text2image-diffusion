@@ -2,16 +2,15 @@ import torch
 
 def get_useful_values(t_batch, beta_1=10e-4, beta_T=0.02, T=1000):
     # t = {0, 1, ..., T-1}
-    beta_schedule = torch.linspace(beta_1, beta_T, T)
+    device = t_batch.device
+    beta_schedule = torch.linspace(beta_1, beta_T, T).to(device)  # shape: [T]
     beta_batch = beta_schedule[t_batch].unsqueeze(1).unsqueeze(2).unsqueeze(3)  # shape: [B, 1, 1, 1]
     alpha_batch = 1 - beta_batch
     alpha_bar_batch = torch.cumprod((1-beta_schedule), dim=0)[t_batch].unsqueeze(1).unsqueeze(2).unsqueeze(3)  # shape: [B, 1, 1, 1]
     sigma_batch = torch.sqrt(beta_batch)
     return beta_batch, alpha_batch, alpha_bar_batch, sigma_batch
 
-def mean_predictor_loss(mu_theta, t_batch, x_0, beta_1=10e-4, beta_T=0.02, T=1000):
-    beta_batch, alpha_t_batch, alpha_bar_batch, sigma_batch = get_useful_values(t_batch, beta_1, beta_T, T)
-    x_t = torch.sqrt(alpha_bar_batch)*x_0 + torch.sqrt(1 - alpha_bar_batch)*torch.randn_like(x_0)
+def mean_predictor_loss(mu_theta, t_batch, x_0, x_t, beta_batch, alpha_t_batch, alpha_bar_batch, sigma_batch):
 
     alpha_bar_t_minus_1_batch = alpha_bar_batch / alpha_t_batch
 
