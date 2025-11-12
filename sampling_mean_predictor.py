@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 T = 1000
 config_path = 'config/mnist.yml'
-checkpoint_path = '../checkpoints/model_epoch_20.pth'
+checkpoint_path = '../checkpoints/model_sigmafix_epoch_10.pth'
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
@@ -29,15 +29,15 @@ with torch.no_grad():
     for i in tqdm(reversed(range(T)), total=T):
         mu_theta = model(x, t[i].unsqueeze(0))
 
-        if i % 100 == 0 or i == T-1:
-            to_append = mu_theta.detach().clone()
-            generated_images.append(to_append)
-
         if i>0:
             noise = torch.randn_like(x).to(device)
             x_new = mu_theta + sigma_t[i] * noise
         else:
             x_new = mu_theta
+        
+        if i % 100 == 0 or i == T-1:
+            to_append = mu_theta.detach().clone()
+            generated_images.append(to_append)
         
         x = x_new
 
