@@ -7,7 +7,8 @@ def get_useful_values(t_batch, beta_1=10e-4, beta_T=0.02, T=1000):
     beta_batch = beta_schedule[t_batch].unsqueeze(1).unsqueeze(2).unsqueeze(3)  # shape: [B, 1, 1, 1]
     alpha_batch = 1 - beta_batch
     alpha_bar_batch = torch.cumprod((1-beta_schedule), dim=0)[t_batch].unsqueeze(1).unsqueeze(2).unsqueeze(3)  # shape: [B, 1, 1, 1]
-    sigma_batch = torch.sqrt(beta_batch)
+    sigma_batch = (1 - alpha_batch)*(1-(alpha_bar_batch/alpha_batch))/(1 - alpha_bar_batch) 
+    sigma_batch = torch.sqrt(sigma_batch)  # shape: [B, 1, 1, 1]
     return beta_batch, alpha_batch, alpha_bar_batch, sigma_batch
 
 def mean_predictor_loss(mu_theta, t_batch, x_0, x_t, beta_batch, alpha_t_batch, alpha_bar_batch, sigma_batch):
@@ -34,5 +35,15 @@ def mean_predictor_loss(mu_theta, t_batch, x_0, x_t, beta_batch, alpha_t_batch, 
         total_loss = matching_loss
     
     return total_loss
+
+def image_predictor_loss(x_0_pred, x_0_true, t_batch, beta_batch, alpha_t_batch, alpha_bar_batch, sigma_batch):
+
+    multiplier = 1
+    multiplier *= (alpha_bar_batch/alpha_t_batch)*((1 - alpha_t_batch)**2)
+    multiplier /= (1 - alpha_bar_batch)**2
+    multiplier /= (2 * sigma_batch**2)
+    loss = torch.mean(multiplier * (x_0_pred.view(-1) - x_0_true.view(-1))**2)
+
+    return loss
 
     

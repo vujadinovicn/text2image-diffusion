@@ -1,7 +1,7 @@
 import torch
 from data.mnist_dataloader import get_mnist_dataloader
 from model.unet import UNet
-from loss.losses import mean_predictor_loss, get_useful_values
+from loss.losses import mean_predictor_loss, image_predictor_loss, get_useful_values
 import yaml
 from tqdm import tqdm
 
@@ -42,14 +42,24 @@ def train(config):
 
             optimizer.zero_grad()
             mu_theta = model(x_t, t_batch)
-            loss = mean_predictor_loss(mu_theta=mu_theta, 
-                                       t_batch=t_batch, 
-                                       x_0=images, 
-                                       x_t=x_t, 
-                                       beta_batch=beta_batch, 
-                                       alpha_t_batch=alpha_t_batch, 
-                                       alpha_bar_batch=alpha_bar_batch, 
-                                       sigma_batch=sigma_batch)
+            if config['train']['loss_type'] == 'mean_predictor':
+                loss = mean_predictor_loss(mu_theta=mu_theta, 
+                                        t_batch=t_batch, 
+                                        x_0=images, 
+                                        x_t=x_t, 
+                                        beta_batch=beta_batch, 
+                                        alpha_t_batch=alpha_t_batch, 
+                                        alpha_bar_batch=alpha_bar_batch, 
+                                        sigma_batch=sigma_batch)
+                
+            elif config['train']['loss_type'] == 'image_predictor':
+                loss = image_predictor_loss(x_0_pred=mu_theta,
+                                           x_0_true=images,
+                                           t_batch=t_batch,
+                                           beta_batch=beta_batch,
+                                           alpha_t_batch=alpha_t_batch,
+                                           alpha_bar_batch=alpha_bar_batch,
+                                           sigma_batch=sigma_batch)
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
