@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 T = 1000
 config_path = 'config/mnist.yml'
-checkpoint_path = '../checkpoints/model_sigmafix_epoch_100_FINAL.pth'
+checkpoint_path = '../checkpoints/model_epoch_50.pth'
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
