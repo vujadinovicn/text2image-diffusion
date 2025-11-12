@@ -1,49 +1,65 @@
 import torch
 
-def get_useful_values(t_batch, beta_1=10e-4, beta_T=0.02, T=1000):
-    # t = {0, 1, ..., T-1}
-    device = t_batch.device
-    beta_schedule = torch.linspace(beta_1, beta_T, T).to(device)  # shape: [T]
-    beta_batch = beta_schedule[t_batch].unsqueeze(1).unsqueeze(2).unsqueeze(3)  # shape: [B, 1, 1, 1]
-    alpha_batch = 1 - beta_batch
-    alpha_bar_batch = torch.cumprod((1-beta_schedule), dim=0)[t_batch].unsqueeze(1).unsqueeze(2).unsqueeze(3)  # shape: [B, 1, 1, 1]
-    sigma_batch = (1 - alpha_batch)*(1-(alpha_bar_batch/alpha_batch))/(1 - alpha_bar_batch) 
-    sigma_batch = torch.sqrt(sigma_batch)  # shape: [B, 1, 1, 1]
-    return beta_batch, alpha_batch, alpha_bar_batch, sigma_batch
+def get_constants(device, beta_1= 0.001, beta_T= 0.02, T=1000):
+    """
+    Compute alpha_t, alpha_bar_t and sigma_t for given time step t.
+    """
+    beta_t = torch.linspace(beta_1, beta_T, T, device=device)
+    alpha_t = 1.0 - beta_t
+    alpha_bar_t = torch.cumprod(alpha_t, dim=0)
+    alpha_bar_t_minus_1 = torch.cat([torch.ones(1, device=device), alpha_bar_t[:-1]])
+    sigma_square_t = (1.0 - alpha_bar_t_minus_1)*(1 - alpha_t)/(1.0 - alpha_bar_t)
+    return alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t
 
-def mean_predictor_loss(mu_theta, t_batch, x_0, x_t, beta_batch, alpha_t_batch, alpha_bar_batch, sigma_batch):
+def noise_predictor_loss(estimated_noise,
+                         true_noise):
+    loss = ((estimated_noise - true_noise)**2)
+    loss = loss.view(loss.shape[0], -1).sum(dim=-1).mean()
+    return loss, 0.0, 0.0 
 
-    alpha_bar_t_minus_1_batch = alpha_bar_batch / alpha_t_batch
+def variational_lower_bound_loss(mu_theta,
+                                 original_x,
+                                 noisy_x,
+                                 batch_t,
+                                 alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t):
+    
+    #mu theta: B x C x H x W
+    #original_x: B x C x H x W
+    #noisy_x: B x C x H x W
+    #batch_t: B
+    
+    alpha_t = alpha_t[batch_t].view(-1, 1, 1, 1)
+    alpha_bar_t = alpha_bar_t[batch_t].view(-1, 1, 1, 1)
+    alpha_bar_t_minus_1 = alpha_bar_t_minus_1[batch_t].view(-1, 1, 1, 1)
+    sigma_square_t = sigma_square_t[batch_t].view(-1,1,1,1)   
+    
+    # compute mu_q
+    mu_q = torch.sqrt(alpha_t)*(1.0 - alpha_bar_t_minus_1)*noisy_x
+    mu_q += torch.sqrt(alpha_bar_t_minus_1)*(1 - alpha_t)*original_x
+    mu_q = mu_q/(1 - alpha_bar_t)
+    
+    t_0_indices = (batch_t==0)    
+    t_non0_indices = (batch_t!=0)
 
-    mu_q = torch.sqrt(alpha_t_batch)*(1 - alpha_bar_t_minus_1_batch)*x_t    
-    mu_q += torch.sqrt(alpha_bar_t_minus_1_batch)*(1-alpha_t_batch)*x_0
-    mu_q /= (1 - alpha_bar_batch)
-
-    t_not_0_indices = (t_batch != 0)
-    if t_not_0_indices.sum() > 0:
-        matching_loss = torch.mean((1/(2*(sigma_batch[t_not_0_indices]**2)))*(mu_theta[t_not_0_indices].view(-1) - mu_q[t_not_0_indices].view(-1))**2)
+    # denoising matching term for t > 
+    if not t_non0_indices.any():
+        loss_non0 = torch.tensor(0.0).to(mu_theta.device)
     else:
-        matching_loss = torch.tensor(0.0, device=x_0.device)
-    
-    t_1_indices = (t_batch == 0)
-    if t_1_indices.sum() > 0:
-        x_0_t1 = x_0[t_1_indices]
-        mu_theta_t1 = mu_theta[t_1_indices]
-        reconstruction_loss = torch.mean((x_0_t1.view(-1) - mu_theta_t1.view(-1))**2)
-        total_loss = matching_loss + reconstruction_loss
+        mu_theta_non0 = mu_theta[t_non0_indices]
+        sigma_square_t_non0 = sigma_square_t[t_non0_indices]
+        mu_q_non0 = mu_q[t_non0_indices]
+        loss_non0 = ((mu_theta_non0 - mu_q_non0)**2)/(2*(sigma_square_t_non0 + 1e-12))
+        loss_non0 = loss_non0.view(loss_non0.shape[0],-1).sum(dim=-1).mean()
+
+    # Reconstruction term for t = 0
+    if not t_0_indices.any():
+        loss_0 = torch.tensor(0.0).to(mu_theta.device)
     else:
-        total_loss = matching_loss
-    
-    return total_loss
+        mu_theta_0 = mu_theta[t_0_indices]
+        original_x_0 = original_x[t_0_indices]
+        alpha_bar_t_0 = alpha_bar_t[t_0_indices]
+        loss_0 = ((mu_theta_0 - original_x_0)**2)
+        loss_0 /= (1 - alpha_bar_t_0)
+        loss_0 = loss_0.view(loss_0.shape[0],-1).sum(dim=-1).mean()
 
-def image_predictor_loss(x_0_pred, x_0_true, t_batch, beta_batch, alpha_t_batch, alpha_bar_batch, sigma_batch):
-
-    multiplier = 1
-    multiplier *= (alpha_bar_batch/alpha_t_batch)*((1 - alpha_t_batch)**2)
-    multiplier /= (1 - alpha_bar_batch)**2
-    multiplier /= (2 * sigma_batch**2)
-    loss = torch.mean(multiplier * (x_0_pred.view(-1) - x_0_true.view(-1))**2)
-
-    return loss
-
-    
+    return loss_non0 + loss_0, loss_non0.item(), loss_0.item()

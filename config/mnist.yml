@@ -16,6 +16,6 @@ train:
   checkpoint_folder: '../checkpoints/'
 
 diffusion_params:
-  beta_1: 0.001
+  beta_1: 0.0001
   beta_T: 0.02
   T: 1000

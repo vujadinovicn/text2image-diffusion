@@ -299,7 +299,7 @@ class UNet(nn.Module):
         h = self.output_activation(h)          # h: [B, C_start, H, W]
         h = self.output_conv(h)                # h: [B, C_in, H, W]
 
-        return F.tanh(h)                               # out: [B, C_in, H, W]
+        return h                               # out: [B, C_in, H, W]
 
 # Testing the UNet model
 if __name__ == "__main__":
