@@ -1,5 +1,9 @@
 import torch
 
+# TODO: implement get_useful_values
+def get_useful_values(**args):
+    pass
+
 def get_constants(device, beta_1= 0.001, beta_T= 0.02, T=1000):
     """
     Compute alpha_t, alpha_bar_t and sigma_t for given time step t.

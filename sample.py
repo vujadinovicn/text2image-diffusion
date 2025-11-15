@@ -3,6 +3,7 @@ from loss.losses import get_constants, get_useful_values
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from utils.utils import parse_config, load_pretrained_model
+import argparse
 
 def mean_predictor_step(i, T, x, model, diffusion_params, generated_images):
     t_current = torch.tensor([i], device=x.device)
@@ -48,10 +49,10 @@ def noise_predictor_step(i, T, x, model,
     return x
 
 
-def sample(config):
-    method = config['sample']['method'] # 'mean_predictor' or 'noise_predictor'
+def sample(config, method):
     diffusion_params = config['diffusion_params']
     T = diffusion_params['T'] # TODO: check
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     model = load_pretrained_model(config).to(device)
@@ -99,6 +100,11 @@ def plot_generated_images(final_image, generated_images):
 
 
 if __name__ == "__main__":
-    config = parse_config('config/mnist.yml')
-    final_image, generated_images = sample(config)
+    argparse = argparse.ArgumentParser()
+    argparse.add_argument('--config_path', type=str, default='config/mnist.yml', help='Path to the configuration file.')
+    argparse.add_argument('--sample_method', type=str, default='mean_predictor', choices=["noise_predictor", "mean_predictor"], help="Sampling method.")
+    args = argparse.parse_args()
+
+    config = parse_config(args.config_path)
+    final_image, generated_images = sample(config=config, method=args.sample_method)
     plot_generated_images(final_image, generated_images)

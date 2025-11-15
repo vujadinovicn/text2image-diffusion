@@ -3,6 +3,7 @@ from data.mnist_dataloader import get_mnist_dataloader
 from loss.losses import variational_lower_bound_loss, get_constants, noise_predictor_loss
 from tqdm import tqdm
 from utils.utils import parse_config, load_model
+import argparse
 
 def train(config):
     batch_size = config['train']['batch_size']
@@ -66,5 +67,9 @@ def train(config):
             torch.save(model.state_dict(), f"{checkpoint_folder}/model_epoch_{epoch+1}.pth")
 
 if __name__ == "__main__":
-    config = parse_config('config/mnist.yml')
+    argparse = argparse.ArgumentParser()
+    argparse.add_argument('--config_path', type=str, default='config/mnist.yml', help='Path to the configuration file.')
+    args = argparse.parse_args()
+
+    config = parse_config(args.config_path)
     train(config)
