@@ -14,7 +14,11 @@ train:
   batch_size: 32
   loss: 'noise_predictor_loss'
   checkpoint_folder: '../checkpoints/'
+  checkpoint_path: '../checkpoints/model_epoch_50.pth'
   allowed_classes: [4]
+
+sample:
+  method: 'noise_predictor'
 
 diffusion_params:
   beta_1: 0.0001

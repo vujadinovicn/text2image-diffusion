@@ -1,18 +1,8 @@
 import torch
 from data.mnist_dataloader import get_mnist_dataloader
-from model.unet import UNet
 from loss.losses import variational_lower_bound_loss, get_constants, noise_predictor_loss
-import yaml
 from tqdm import tqdm
-
-def parse_config(config_path):
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    return config
-
-def load_model(config):
-    model = UNet(**config['model'])
-    return model
+from utils.utils import parse_config, load_model
 
 def train(config):
     batch_size = config['train']['batch_size']
