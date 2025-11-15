@@ -19,9 +19,11 @@ def train(config):
     num_epochs = config['train']['epochs']
     learning_rate = config['train']['lr']
     checkpoint_folder = config['train']['checkpoint_folder']
+    allowed_classes = config['train']['allowed_classes']
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    train_loader = get_mnist_dataloader(batch_size=batch_size, split="train")
+    train_loader = get_mnist_dataloader(batch_size=batch_size, split="train", allowed_classes=allowed_classes)
+
     model = load_model(config).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t = get_constants(device, **config['diffusion_params'])

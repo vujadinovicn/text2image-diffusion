@@ -25,8 +25,8 @@ class MNISTDataset(Dataset):
         image, label = self.mnist_data[idx]
         return image, label
 
-def get_mnist_dataloader(batch_size=64, split="train"):
-    dataset = MNISTDataset(split=split)
+def get_mnist_dataloader(batch_size=64, split="train", allowed_classes=[3]):
+    dataset = MNISTDataset(split=split, allowed_classes=allowed_classes)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=(split=="train"))
     return dataloader
 
