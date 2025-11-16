@@ -45,9 +45,34 @@ def noise_predictor_step(i, T, x, model,
         to_append = x_new.detach().clone()
         generated_images.append(to_append)
     
-    x = x_new.clamp(-1, 1)
+    x = x_new
     return x
 
+def denoising_step(i, T, x, model, diffusion_params, generated_images):
+    t_current = torch.tensor([i], device=x.device)
+    
+    alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t = get_constants(device=x.device, **diffusion_params)
+    
+    alpha_t_current = alpha_t[t_current]
+    alpha_bar_t_current = alpha_bar_t[t_current]
+    sigma_square_current = sigma_square_t[t_current]
+    alpha_bar_t_minus_1_current = alpha_bar_t_minus_1[t_current]
+
+    x0_pred = model(x, t_current)
+    m1 = (1 - alpha_bar_t_minus_1_current)*torch.sqrt(alpha_t_current)*x
+    m2 = (1 - alpha_t_current)*torch.sqrt(alpha_bar_t_minus_1_current)*x0_pred
+    mu_theta = (m1+m2)/(1 - alpha_bar_t_current)
+    if i > 0:
+        noise = torch.randn_like(x).to(x.device)
+        x_new = mu_theta + torch.sqrt(sigma_square_current)*noise
+    else:
+        x_new = mu_theta
+    
+    if i % 100 == 0 or i == T-1:
+        to_append = x_new.detach().clone()
+        generated_images.append(to_append)
+    
+    return x_new
 
 def sample(config, method):
     diffusion_params = config['diffusion_params']
@@ -70,6 +95,8 @@ def sample(config, method):
                 x = mean_predictor_step(i, T, x, model, diffusion_params, generated_images)
             elif method == 'noise_predictor':
                 x = noise_predictor_step(i, T, x, model, alpha_t, alpha_bar_t, sigma_square_t, generated_images)
+            elif method == 'denoising':
+                x = denoising_step(i, T, x, model, diffusion_params, generated_images)
             else:
                 raise ValueError(f"Unknown sampling method: {method}")
             
@@ -102,7 +129,7 @@ def plot_generated_images(final_image, generated_images):
 if __name__ == "__main__":
     argparse = argparse.ArgumentParser()
     argparse.add_argument('--config_path', type=str, default='config/mnist.yml', help='Path to the configuration file.')
-    argparse.add_argument('--sample_method', type=str, default='mean_predictor', choices=["noise_predictor", "mean_predictor"], help="Sampling method.")
+    argparse.add_argument('--sample_method', type=str, default='mean_predictor', choices=["noise_predictor", "mean_predictor", "denoising"], help="Sampling method.")
     args = argparse.parse_args()
 
     config = parse_config(args.config_path)
