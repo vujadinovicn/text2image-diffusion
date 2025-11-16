@@ -70,7 +70,7 @@ def train(config):
                 loss, loss_non0, loss_0 = denoising_loss(mu_theta, images)
 
             elif config["train"]["loss"] == "score_matching_loss":
-                loss, loss_non0, loss_0 = score_matching_loss(mu_theta, images, x_t)
+                loss, loss_non0, loss_0 = score_matching_loss(mu_theta, images, x_t, alpha_bar_t_batch)
 
             else:
                 raise ValueError(f"Unknown loss function: {config['train']['loss']}")
@@ -88,7 +88,7 @@ def train(config):
         print(f"Denoising Loss (t>0): {avg_loss_non0:.4f}, Reconstruction Loss (t=0): {avg_loss_0:.4f}")
         print()
         if (epoch+1)%10 == 0:
-            torch.save(model.state_dict(), f"{checkpoint_folder}/model_epoch_{epoch+1}.pth")
+            torch.save(model.state_dict(), f"{checkpoint_folder}/model_epoch_sm_{epoch+1}.pth")
 
 if __name__ == "__main__":
     argparse = argparse.ArgumentParser()

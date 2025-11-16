@@ -38,9 +38,12 @@ def mean_predictor_loss(mu_theta,
 
 def score_matching_loss(estimated_score,
                          original_x,
-                         noisy_x,):
-    true_score = -(noisy_x - original_x)
+                         noisy_x,
+                         alpha_bar_t):
+    true_score = -(noisy_x - original_x*torch.sqrt(alpha_bar_t))
+    true_score /= (1 - alpha_bar_t + 1e-12)
     loss = ((estimated_score - true_score)**2)
+    loss = loss * (1 - alpha_bar_t)
     loss = loss.view(loss.shape[0], -1).sum(dim=-1).mean()
     return loss, 0.0, 0.0
 
