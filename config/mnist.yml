@@ -7,15 +7,16 @@ model:
   attention_resolutions: [16]
   T: 1000
   T_dim: 256
+  learned_variance: True
 
 train:
   lr : 0.0001
   epochs: 50
-  batch_size: 32
+  batch_size: 64
   loss: 'noise_predictor_loss'
   checkpoint_folder: '../checkpoints/'
   checkpoint_path: '../checkpoints/model_epoch_50.pth'
-  allowed_classes: [4]
+  allowed_classes: [3]
 
 diffusion_params:
   beta_1: 0.0001

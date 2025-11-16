@@ -115,7 +115,8 @@ class UNet(nn.Module):
                  num_resnet_blocks = 2,
                  attention_resolutions = [16],
                  T = 10,
-                 T_dim = 256):
+                 T_dim = 256,
+                 learned_variance = False):
         """
         UNet architecture for Diffusion Models
         self.downsample_resnet_layers: [ [layer1, layer2..], [layer1, layer2..], ... ] 
@@ -130,6 +131,7 @@ class UNet(nn.Module):
         self.out_channel_multipliers = out_channel_multipliers
         self.num_resnet_blocks = num_resnet_blocks
         self.attention_resolutions = attention_resolutions
+        self.learned_variance = learned_variance
 
         # self.t_embedding_layer = nn.Embedding(T, T_dim)
 
@@ -241,7 +243,9 @@ class UNet(nn.Module):
         # output layers
         self.output_group_norm = nn.GroupNorm(num_groups=32, num_channels=starting_channels*out_channel_multipliers[0])
         self.output_activation = nn.SiLU()
-        self.output_conv = conv3x3_samesize(starting_channels*out_channel_multipliers[0], in_channels)
+
+        mult = 1 if not learned_variance else 2
+        self.output_conv = conv3x3_samesize(starting_channels*out_channel_multipliers[0], mult*in_channels)
 
     def forward(self, x, t):
         # x: [B, C_in, H, W]
@@ -298,6 +302,10 @@ class UNet(nn.Module):
         h = self.output_group_norm(h)          # h: [B, C_start, H, W]
         h = self.output_activation(h)          # h: [B, C_start, H, W]
         h = self.output_conv(h)                # h: [B, C_in, H, W]
+
+        if self.learned_variance:
+            mean, var = torch.chunk(h, 2, dim=1) #[B, 2*C_in, H, W]
+            return mean, var
 
         return h                               # out: [B, C_in, H, W]
 

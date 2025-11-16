@@ -62,7 +62,7 @@ def sample(config, method):
     x = torch.randn(1, 1, 32, 32).to(device)
 
     if method == 'noise_predictor':
-        alpha_t, alpha_bar_t, _, sigma_square_t = get_constants(device, **diffusion_params)
+        alpha_t, alpha_bar_t, _, sigma_square_t, log_sigma_square_t_clipped = get_constants(device, **diffusion_params)
 
     with torch.no_grad():
         for i in tqdm(reversed(range(T)), total=T):

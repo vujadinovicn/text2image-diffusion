@@ -1,5 +1,5 @@
 import torch
-from loss.losses import get_constants
+from loss.losses import get_constants, compute_log_sigma_square
 import yaml
 from model.unet import UNet
 import matplotlib.pyplot as plt
@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 T = 1000
 config_path = 'config/mnist.yml'
-checkpoint_path = '../checkpoints/model_epoch_50.pth'
+checkpoint_path = '../checkpoints/ksh_model_epoch_40.pth'
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
@@ -17,10 +17,14 @@ with open(config_path, 'r') as f:
     config = yaml.safe_load(f)
 
 model = UNet(**config['model']).to(device)
-model.load_state_dict(torch.load(checkpoint_path))
+model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 model.eval()
 
-alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t = get_constants(device, **config['diffusion_params'])
+print(model.learned_variance)
+
+learned_variance = config['model'].get('learned_variance', True)
+print(f"Lvariance: {learned_variance}")
+alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t, log_sigma_square_t_clipped = get_constants(device, **config['diffusion_params'])
 
 generated_images = []
 x = torch.randn(1, 1, 32, 32).to(device) 
@@ -28,25 +32,43 @@ x = torch.randn(1, 1, 32, 32).to(device)
 with torch.no_grad():
     for i in tqdm(reversed(range(T)), total=T):
         t_current = torch.tensor([i], device=device)
-        
-        sigma_current = sigma_square_t[t_current]
         alpha_t_current = alpha_t[t_current]
         alpha_bar_t_current = alpha_bar_t[t_current]
 
-        eps_theta = model(x, t_current)
+        if not learned_variance:
+            sigma_current = sigma_square_t[t_current]
+            
+            eps_theta = model(x, t_current)
 
-        if i > 0:
-            noise = torch.randn_like(x).to(device)
-            x_new = (x  - (1 - alpha_t_current)/torch.sqrt(1 - alpha_bar_t_current) * eps_theta)/torch.sqrt(alpha_t_current)
-            x_new += torch.sqrt(sigma_current) * noise
+            if i > 0:
+                noise = torch.randn_like(x).to(device)
+                x_new = (x  - (1 - alpha_t_current)/torch.sqrt(1 - alpha_bar_t_current) * eps_theta)/torch.sqrt(alpha_t_current)
+                x_new += torch.sqrt(sigma_current) * noise
+            else:
+                x_new = (x  - (1 - alpha_t_current)/torch.sqrt(1 - alpha_bar_t_current) * eps_theta)/torch.sqrt(alpha_t_current)        
+            
+            if i % 100 == 0 or i == T-1:
+                to_append = x_new.detach().clone()
+                generated_images.append(to_append)
+            
+            x = x_new.clamp(-1, 1)
         else:
-            x_new = (x  - (1 - alpha_t_current)/torch.sqrt(1 - alpha_bar_t_current) * eps_theta)/torch.sqrt(alpha_t_current)        
-        
-        if i % 100 == 0 or i == T-1:
-            to_append = x_new.detach().clone()
-            generated_images.append(to_append)
-        
-        x = x_new.clamp(-1, 1)
+            eps_theta, var_theta = model(x, t_current) 
+            mean = (x  - (1 - alpha_t_current)/torch.sqrt(1 - alpha_bar_t_current) * eps_theta)/torch.sqrt(alpha_t_current)
+            log_sigma_square = compute_log_sigma_square(var_theta, t_current, log_sigma_square_t_clipped, alpha_t, use_single_batch=True)
+
+            if i > 0:
+                noise = torch.randn_like(x)
+                x_new = mean + torch.exp(0.5 * log_sigma_square) * noise
+            else:
+                # last step: often no noise
+                x_new = mean
+
+            if i % 100 == 0 or i == T-1:
+                to_append = x_new.detach().clone()
+                generated_images.append(to_append)
+            
+            x = x_new.clamp(-1, 1)
 
 x = x.squeeze().cpu().numpy()
 x = (x + 1) / 2  
@@ -57,6 +79,7 @@ plt.imshow(x, cmap='gray')
 plot_images = []
 num_images = len(generated_images)
 indices = torch.linspace(0, num_images - 1, steps=10).long()
+indices = torch.clamp(indices.long(), max=num_images - 1)
 for idx in indices:
     plot_images.append(generated_images[idx])
 
