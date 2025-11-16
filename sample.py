@@ -1,5 +1,5 @@
 import torch
-from loss.losses import get_constants, get_useful_values
+from loss.losses import get_constants
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from utils.utils import parse_config, load_pretrained_model
@@ -7,7 +7,7 @@ import argparse
 
 def mean_predictor_step(i, T, x, model, diffusion_params, generated_images):
     t_current = torch.tensor([i], device=x.device)
-    _, _, _, sigma_current = get_useful_values(t_current, **diffusion_params)
+    _, _, _, sigma_current = get_constants(t_current, **diffusion_params)
     
     mu_theta = model(x, t_current)
 

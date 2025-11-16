@@ -21,6 +21,22 @@ def noise_predictor_loss(estimated_noise,
     loss = loss.view(loss.shape[0], -1).sum(dim=-1).mean()
     return loss, 0.0, 0.0 
 
+def mean_predictor_loss(mu_theta,
+                        noisy_x,
+                        original_x,
+                        alpha_t,
+                        alpha_bar_t_minus_1,
+                        alpha_bar_t):
+    
+    mu_q = torch.sqrt(alpha_t)*(1.0 - alpha_bar_t_minus_1)*noisy_x
+    mu_q += torch.sqrt(alpha_bar_t_minus_1)*(1 - alpha_t)*original_x
+    mu_q = mu_q/(1 - alpha_bar_t)
+
+    loss = ((mu_theta - mu_q)**2)
+    loss = loss.view(loss.shape[0], -1).sum(dim=-1).mean()
+    return loss, 0.0, 0.0    
+
+
 def variational_lower_bound_loss(mu_theta,
                                  original_x,
                                  noisy_x,
