@@ -36,6 +36,11 @@ def mean_predictor_loss(mu_theta,
     loss = loss.view(loss.shape[0], -1).sum(dim=-1).mean()
     return loss, 0.0, 0.0    
 
+def denoising_loss(estimated_x0,
+                   original_x):
+    loss = ((estimated_x0 - original_x)**2)
+    loss = loss.view(loss.shape[0], -1).sum(dim=-1).mean()
+    return loss, 0.0, 0.0
 
 def variational_lower_bound_loss(mu_theta,
                                  original_x,

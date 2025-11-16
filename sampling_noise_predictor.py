@@ -46,7 +46,8 @@ with torch.no_grad():
             to_append = x_new.detach().clone()
             generated_images.append(to_append)
         
-        x = x_new.clamp(-1, 1)
+        # x = x_new.clamp(-1, 1)
+        x = x_new
 
 x = x.squeeze().cpu().numpy()
 x = (x + 1) / 2  

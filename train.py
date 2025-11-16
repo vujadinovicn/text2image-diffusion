@@ -1,6 +1,6 @@
 import torch
 from data.mnist_dataloader import get_mnist_dataloader
-from loss.losses import variational_lower_bound_loss, get_constants, noise_predictor_loss, mean_predictor_loss
+from loss.losses import variational_lower_bound_loss, get_constants, noise_predictor_loss, mean_predictor_loss, denoising_loss
 from tqdm import tqdm
 from utils.utils import parse_config, load_model
 import argparse
@@ -63,7 +63,10 @@ def train(config):
                                         alpha_t = alpha_t_batch,
                                         alpha_bar_t_minus_1 = alpha_bar_t_minus_1_batch,
                                         alpha_bar_t = alpha_bar_t_batch)
-
+            
+            elif config["train"]["loss"] == "denoising_loss":
+                # predict x0 directly and compute MSE
+                loss, loss_non0, loss_0 = denoising_loss(mu_theta, images)
 
             loss.backward()
             optimizer.step()
