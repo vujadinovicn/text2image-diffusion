@@ -1,6 +1,6 @@
 import torch
 from data.mnist_dataloader import get_mnist_dataloader
-from loss.losses import variational_lower_bound_loss, get_constants, noise_predictor_loss, mean_predictor_loss, denoising_loss
+from loss.losses import variational_lower_bound_loss, get_constants, noise_predictor_loss, mean_predictor_loss, denoising_loss, score_matching_loss
 from tqdm import tqdm
 from utils.utils import parse_config, load_model
 import argparse
@@ -40,6 +40,7 @@ def train(config):
 
             optimizer.zero_grad()
             mu_theta = model(x_t, t_batch)
+
             if config["train"]["loss"] == "variational_lower_bound_loss":
                 # this is basically a weighted mean predictor loss 
                 loss, loss_non0, loss_0 = variational_lower_bound_loss(mu_theta,
@@ -68,6 +69,12 @@ def train(config):
                 # predict x0 directly and compute MSE
                 loss, loss_non0, loss_0 = denoising_loss(mu_theta, images)
 
+            elif config["train"]["loss"] == "score_matching_loss":
+                loss, loss_non0, loss_0 = score_matching_loss(mu_theta, images, x_t)
+
+            else:
+                raise ValueError(f"Unknown loss function: {config['train']['loss']}")
+            
             loss.backward()
             optimizer.step()
             total_loss += loss.item()

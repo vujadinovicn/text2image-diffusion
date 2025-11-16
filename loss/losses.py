@@ -34,7 +34,15 @@ def mean_predictor_loss(mu_theta,
 
     loss = ((mu_theta - mu_q)**2)
     loss = loss.view(loss.shape[0], -1).sum(dim=-1).mean()
-    return loss, 0.0, 0.0    
+    return loss, 0.0, 0.0   
+
+def score_matching_loss(estimated_score,
+                         original_x,
+                         noisy_x,):
+    true_score = -(noisy_x - original_x)
+    loss = ((estimated_score - true_score)**2)
+    loss = loss.view(loss.shape[0], -1).sum(dim=-1).mean()
+    return loss, 0.0, 0.0
 
 def denoising_loss(estimated_x0,
                    original_x):

@@ -12,10 +12,10 @@ train:
   lr : 0.0001
   epochs: 50
   batch_size: 32
-  loss: 'noise_predictor_loss'
-  checkpoint_folder: '../checkpoints/'
+  loss: 'score_matching_loss'
+  checkpoint_folder: '../checkpoints_score_matching/'
   checkpoint_path: '../checkpoints/model_epoch_50_denoiser.pth'
-  allowed_classes: [4]
+  allowed_classes: [1,2,3]
 
 diffusion_params:
   beta_1: 0.0001
