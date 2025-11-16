@@ -39,7 +39,7 @@ pip install -r requirements.txt
 ## Training
 For training the model, you can directly run the following command:
 ```bash
-python train.py
+python train.py --config_file config/mnist.yml
 ``` 
 
 An example of the expected config file can be seen in `config/mnist.yml`
@@ -109,6 +109,10 @@ Following are a few images sampled from our model which was trained for 50 epoch
 
 
 ## To Do:
-* Pass config as an argument.
-* Create a single file for sampling and use loss function and config as arguments.
-* Create argument to decide the classes of digits to train on rather than hardcoding it inside the dataloader.
+* ~~Pass config as an argument.~~
+* ~~Create a single file for sampling and use loss function and config as arguments.~~
+* ~~Create argument to decide the classes of digits to train on rather than hardcoding it inside the dataloader.~~
+* Add more datasets (CIFAR10, CelebA).
+* Add evaluation scripts.
+* Add score-generation loss.
+* Add conditional generation.
