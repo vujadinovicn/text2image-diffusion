@@ -1,8 +1,5 @@
 import torch
 
-# TODO: implement get_useful_values
-def get_useful_values(**args):
-    pass
 
 def get_constants(device, beta_1= 0.001, beta_T= 0.02, T=1000):
     """
@@ -24,6 +21,50 @@ def noise_predictor_loss(estimated_noise,
     loss = ((estimated_noise - true_noise)**2)
     loss = loss.view(loss.shape[0], -1).sum(dim=-1).mean()
     return loss, 0.0, 0.0 
+
+# maybe try the version of this loss which matches exactly the denoising loss
+# this is equivalent to multiplying the loss by (2_sigma_t^2)*(1 - alpha_bar_t)*alpha_t/(1 - alpha_t)^2
+def mean_predictor_loss(mu_theta,
+                        noisy_x,
+                        original_x,
+                        alpha_t,
+                        alpha_bar_t_minus_1,
+                        alpha_bar_t):
+    
+    mu_q = torch.sqrt(alpha_t)*(1.0 - alpha_bar_t_minus_1)*noisy_x
+    mu_q += torch.sqrt(alpha_bar_t_minus_1)*(1 - alpha_t)*original_x
+    mu_q = mu_q/(1 - alpha_bar_t)
+
+    loss = ((mu_theta - mu_q)**2)
+    loss = loss.view(loss.shape[0], -1).sum(dim=-1).mean()
+    return loss, 0.0, 0.0   
+
+def score_matching_loss(estimated_score,
+                         original_x,
+                         noisy_x,
+                         alpha_bar_t):
+    true_score = -(noisy_x - original_x*torch.sqrt(alpha_bar_t))
+    true_score /= (1 - alpha_bar_t + 1e-12)
+    loss = ((estimated_score - true_score)**2)
+    loss = loss * (1 - alpha_bar_t)
+    loss = loss.view(loss.shape[0], -1).sum(dim=-1).mean()
+    return loss, 0.0, 0.0
+
+def denoising_loss(estimated_x0,
+                   original_x):
+    loss = ((estimated_x0 - original_x)**2)
+    loss = loss.view(loss.shape[0], -1).sum(dim=-1).mean()
+    return loss, 0.0, 0.0
+
+# denoising loss which is equivalent to the noise predictor loss
+# def denoising_loss(estimated_x0,
+    #                original_x,
+    #                  alpha_bar_t,
+    #                 alpha_t):
+    # loss = ((estimated_x0 - original_x)**2)
+    # loss = loss * alpha_t/(1 - alpha_bar_t + 1e-12)
+    # loss = loss.view(loss.shape[0], -1).sum(dim=-1).mean()
+    # return loss, 0.0, 0.0
 
 def variational_lower_bound_loss(mu_theta,
                                  original_x,

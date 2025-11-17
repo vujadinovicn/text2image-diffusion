@@ -1,6 +1,6 @@
 import torch
 from data.mnist_dataloader import get_mnist_dataloader
-from loss.losses import variational_lower_bound_loss, get_constants, noise_predictor_loss
+from loss.losses import variational_lower_bound_loss, get_constants, noise_predictor_loss, mean_predictor_loss, denoising_loss, score_matching_loss
 from tqdm import tqdm
 from utils.utils import parse_config, load_model
 import argparse
@@ -31,13 +31,18 @@ def train(config):
             
             # get the diffusion params for this batch
             alpha_bar_t_batch = alpha_bar_t[t_batch].view(-1, 1, 1, 1)
+            alpha_t_batch = alpha_t[t_batch].view(-1, 1, 1, 1)
+            alpha_bar_t_minus_1_batch = alpha_bar_t_minus_1[t_batch].view(-1, 1, 1, 1)
+            sigma_square_t_batch = sigma_square_t[t_batch].view(-1, 1, 1, 1)
 
             # create the noisy image
             x_t = torch.sqrt(alpha_bar_t_batch)*images + torch.sqrt(1 - alpha_bar_t_batch)*torch.randn_like(images)
 
             optimizer.zero_grad()
             mu_theta = model(x_t, t_batch)
-            if config["train"]["loss"] == "mean_predictor_loss":
+
+            if config["train"]["loss"] == "variational_lower_bound_loss":
+                # this is basically a weighted mean predictor loss 
                 loss, loss_non0, loss_0 = variational_lower_bound_loss(mu_theta,
                                     original_x = images,
                                     noisy_x = x_t,
@@ -50,7 +55,26 @@ def train(config):
             elif config["train"]["loss"] == "noise_predictor_loss":
                 true_noise = (x_t - torch.sqrt(alpha_bar_t_batch)*images)/torch.sqrt(1 - alpha_bar_t_batch)
                 loss, loss_non0, loss_0 = noise_predictor_loss(mu_theta, true_noise)
+            
+            elif config["train"]["loss"] == "mean_predictor_loss":
+                # this is the VLB loss without the weighting
+                loss, loss_non0, loss_0 = mean_predictor_loss(mu_theta,
+                                        noisy_x = x_t,
+                                        original_x = images,
+                                        alpha_t = alpha_t_batch,
+                                        alpha_bar_t_minus_1 = alpha_bar_t_minus_1_batch,
+                                        alpha_bar_t = alpha_bar_t_batch)
+            
+            elif config["train"]["loss"] == "denoising_loss":
+                # predict x0 directly and compute MSE
+                loss, loss_non0, loss_0 = denoising_loss(mu_theta, images)
 
+            elif config["train"]["loss"] == "score_matching_loss":
+                loss, loss_non0, loss_0 = score_matching_loss(mu_theta, images, x_t, alpha_bar_t_batch)
+
+            else:
+                raise ValueError(f"Unknown loss function: {config['train']['loss']}")
+            
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
@@ -64,7 +88,7 @@ def train(config):
         print(f"Denoising Loss (t>0): {avg_loss_non0:.4f}, Reconstruction Loss (t=0): {avg_loss_0:.4f}")
         print()
         if (epoch+1)%10 == 0:
-            torch.save(model.state_dict(), f"{checkpoint_folder}/model_epoch_{epoch+1}.pth")
+            torch.save(model.state_dict(), f"{checkpoint_folder}/model_epoch_sm_{epoch+1}.pth")
 
 if __name__ == "__main__":
     argparse = argparse.ArgumentParser()
