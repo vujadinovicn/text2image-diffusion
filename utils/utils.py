@@ -13,5 +13,5 @@ def load_model(config):
 
 def load_pretrained_model(config):
     model = UNet(**config['model'])
-    model.load_state_dict(torch.load(config['train']['checkpoint_path']))
+    model.load_state_dict(torch.load(config['train']['checkpoint_path'], map_location=torch.device('cpu')))
     return model

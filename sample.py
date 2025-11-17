@@ -36,7 +36,6 @@ def noise_predictor_step(i, T, x, model,
                          alpha_t, alpha_bar_t, sigma_square_t, generated_images,
                          log_sigma_square_t_clipped, learned_variance):
     t_current = torch.tensor([i], device=x.device)
-        
     alpha_t_current = alpha_t[t_current]
     alpha_bar_t_current = alpha_bar_t[t_current]
 
@@ -61,6 +60,7 @@ def noise_predictor_step(i, T, x, model,
         generated_images.append(to_append)
     
     x = x_new
+
     return x
 
 def denoising_step(i, T, x, model, generated_images,

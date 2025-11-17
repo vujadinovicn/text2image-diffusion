@@ -77,8 +77,8 @@ def denoising_loss(estimated_x0,
     # return loss, 0.0, 0.0
 
 
-def transform_timestep_data(batch_t, **data):
-    return [d[batch_t].view(-1, 1, 1, 1) for d in data.values()]
+def transform_timestep_data(batch_t, *data):
+    return [d[batch_t].view(-1, 1, 1, 1) for d in data]
 
 def compute_mu_q(original_x, noisy_x, alpha_t, alpha_bar_t, alpha_bar_t_minus_1):
     mu_q = torch.sqrt(alpha_t) * (1.0 - alpha_bar_t_minus_1) * noisy_x
@@ -140,8 +140,8 @@ def vlb_openai_like(mu_theta, original_x, noisy_x, batch_t,
                     alpha_t, alpha_bar_t, alpha_bar_t_minus_1,
                     log_sigma_square_t_clipped, log_sigma_square):
     
-    alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t = transform_timestep_data(batch_t, alpha_t, 
-                                                                                        alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t)  
+    alpha_t, alpha_bar_t, alpha_bar_t_minus_1, log_sigma_square_t_clipped = transform_timestep_data(batch_t, alpha_t, 
+                                                                                        alpha_bar_t, alpha_bar_t_minus_1, log_sigma_square_t_clipped)  
     
     mu_q, alpha_bar_t = compute_mu_q(original_x, noisy_x, alpha_t, alpha_bar_t, alpha_bar_t_minus_1)
 
