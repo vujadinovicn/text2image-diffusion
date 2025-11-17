@@ -14,7 +14,7 @@ train:
   batch_size: 32
   loss: 'score_matching_loss'
   checkpoint_folder: '../checkpoints_score_matching/'
-  checkpoint_path: '../checkpoints/model_epoch_50_denoiser.pth'
+  checkpoint_path: '../checkpoints/model_epoch_sm_50.pth'
   allowed_classes: [1,2,3]
 
 diffusion_params:

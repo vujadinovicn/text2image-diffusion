@@ -5,15 +5,13 @@ from tqdm import tqdm
 from utils.utils import parse_config, load_pretrained_model
 import argparse
 
-def mean_predictor_step(i, T, x, model, diffusion_params, generated_images):
-    t_current = torch.tensor([i], device=x.device)
-    _, _, _, sigma_current = get_constants(t_current, **diffusion_params)
-    
+def mean_predictor_step(i, T, x, model, generated_images, sigma_current):
+    t_current = torch.tensor([i], device=x.device)    
     mu_theta = model(x, t_current)
-
+    sigma_current = sigma_current[t_current]
     if i > 0:
         noise = torch.randn_like(x).to(x.device)
-        x_new = mu_theta + sigma_current.squeeze() * noise
+        x_new = mu_theta + torch.sqrt(sigma_current) * noise
     else:
         x_new = mu_theta
     
@@ -21,7 +19,7 @@ def mean_predictor_step(i, T, x, model, diffusion_params, generated_images):
         to_append = x_new.detach().clone()
         generated_images.append(to_append)
     
-    x = x_new.clamp(-1, 1)
+    x = x_new
     return x
 
 def noise_predictor_step(i, T, x, model, 
@@ -48,10 +46,9 @@ def noise_predictor_step(i, T, x, model,
     x = x_new
     return x
 
-def denoising_step(i, T, x, model, diffusion_params, generated_images):
+def denoising_step(i, T, x, model, generated_images,
+                   alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t):
     t_current = torch.tensor([i], device=x.device)
-    
-    alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t = get_constants(device=x.device, **diffusion_params)
     
     alpha_t_current = alpha_t[t_current]
     alpha_bar_t_current = alpha_bar_t[t_current]
@@ -74,6 +71,29 @@ def denoising_step(i, T, x, model, diffusion_params, generated_images):
     
     return x_new
 
+def score_matching_step(i, T, x, model, diffusion_params, generated_images,
+                        alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t):
+    t_current = torch.tensor([i], device=x.device)
+    
+    alpha_t_current = alpha_t[t_current]
+    alpha_bar_t_current = alpha_bar_t[t_current]
+    sigma_square_current = sigma_square_t[t_current]
+    alpha_bar_t_minus_1_current = alpha_bar_t_minus_1[t_current]
+
+    score_theta = model(x, t_current)
+
+    mu_q = x + (1 - alpha_t_current) * score_theta 
+    mu_q = mu_q / torch.sqrt(alpha_t_current)
+    if i > 0:
+        noise = torch.randn_like(x).to(x.device)
+        x_new = mu_q + torch.sqrt(sigma_square_current)*noise
+    else:
+        x_new = mu_q
+    if i % 100 == 0 or i == T-1:
+        to_append = x_new.detach().clone()
+        generated_images.append(to_append)
+    return x_new
+
 def sample(config, method):
     diffusion_params = config['diffusion_params']
     T = diffusion_params['T'] # TODO: check
@@ -86,22 +106,23 @@ def sample(config, method):
     generated_images = []
     x = torch.randn(1, 1, 32, 32).to(device)
 
-    if method == 'noise_predictor':
-        alpha_t, alpha_bar_t, _, sigma_square_t = get_constants(device, **diffusion_params)
+    
+    alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t = get_constants(device, **diffusion_params)
 
     with torch.no_grad():
         for i in tqdm(reversed(range(T)), total=T):
-            if method == 'mean_predictor':
-                x = mean_predictor_step(i, T, x, model, diffusion_params, generated_images)
+            if method == 'mean_predictor': # this does not work well
+                x = mean_predictor_step(i, T, x, model, generated_images, sigma_square_t)
             elif method == 'noise_predictor':
                 x = noise_predictor_step(i, T, x, model, alpha_t, alpha_bar_t, sigma_square_t, generated_images)
             elif method == 'denoising':
-                x = denoising_step(i, T, x, model, diffusion_params, generated_images)
+                x = denoising_step(i, T, x, model, diffusion_params, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t)
+            elif method == 'score_matching':
+                x = score_matching_step(i, T, x, model, diffusion_params, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t)
             else:
                 raise ValueError(f"Unknown sampling method: {method}")
             
     return x, generated_images
-
 
 def plot_generated_images(final_image, generated_images):
     final_image = final_image.squeeze().cpu().numpy()
@@ -129,7 +150,7 @@ def plot_generated_images(final_image, generated_images):
 if __name__ == "__main__":
     argparse = argparse.ArgumentParser()
     argparse.add_argument('--config_path', type=str, default='config/mnist.yml', help='Path to the configuration file.')
-    argparse.add_argument('--sample_method', type=str, default='mean_predictor', choices=["noise_predictor", "mean_predictor", "denoising"], help="Sampling method.")
+    argparse.add_argument('--sample_method', type=str, default='mean_predictor', choices=["noise_predictor", "mean_predictor", "denoising", "score_matching"], help="Sampling method.")
     args = argparse.parse_args()
 
     config = parse_config(args.config_path)
