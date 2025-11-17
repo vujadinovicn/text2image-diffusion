@@ -1,19 +1,29 @@
 import torch
-from loss.losses import get_constants
+from loss.losses import get_constants, compute_log_sigma_square
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from utils.utils import parse_config, load_pretrained_model
+from utils.plotting import plot_sample_generated_images
 import argparse
 
-def mean_predictor_step(i, T, x, model, generated_images, sigma_current):
-    t_current = torch.tensor([i], device=x.device)    
-    mu_theta = model(x, t_current)
-    sigma_current = sigma_current[t_current]
+def mean_predictor_step(i, T, x, model, generated_images, sigma_current, alpha_t, log_sigma_square_t_clipped, learned_variance):
+    t_current = torch.tensor([i], device=x.device)  
+
+    if not learned_variance:  
+        mu_theta = model(x, t_current)
+        sigma_current = sigma_current[t_current]
+        std = torch.sqrt(sigma_current)
+    else:
+        mu_theta, var_theta = model(x, t_current)
+        log_sigma_square = compute_log_sigma_square(var_theta, t_current, log_sigma_square_t_clipped, alpha_t, use_single_batch=True)
+        std = torch.exp(0.5 * log_sigma_square)
+
+    mean = mu_theta
     if i > 0:
         noise = torch.randn_like(x).to(x.device)
-        x_new = mu_theta + torch.sqrt(sigma_current) * noise
+        x_new = mean + std * noise
     else:
-        x_new = mu_theta
+        x_new = mean
     
     if i % 100 == 0 or i == T-1:
         to_append = x_new.detach().clone()
@@ -23,22 +33,29 @@ def mean_predictor_step(i, T, x, model, generated_images, sigma_current):
     return x
 
 def noise_predictor_step(i, T, x, model, 
-                         alpha_t, alpha_bar_t, sigma_square_t, generated_images):
+                         alpha_t, alpha_bar_t, sigma_square_t, generated_images,
+                         log_sigma_square_t_clipped, learned_variance):
     t_current = torch.tensor([i], device=x.device)
         
-    sigma_current = sigma_square_t[t_current]
     alpha_t_current = alpha_t[t_current]
     alpha_bar_t_current = alpha_bar_t[t_current]
 
-    eps_theta = model(x, t_current)
+    if not learned_variance:
+        eps_theta = model(x, t_current)
+        sigma_current = sigma_square_t[t_current]
+        std = torch.sqrt(sigma_current)
+    else:
+        eps_theta, var_theta = model(x, t_current)
+        log_sigma_square = compute_log_sigma_square(var_theta, t_current, log_sigma_square_t_clipped, alpha_t, use_single_batch=True)
+        std = torch.exp(0.5 * log_sigma_square)
 
+    mean = (x  - (1 - alpha_t_current)/torch.sqrt(1 - alpha_bar_t_current) * eps_theta)/torch.sqrt(alpha_t_current) 
     if i > 0:
         noise = torch.randn_like(x).to(x.device)
-        x_new = (x  - (1 - alpha_t_current)/torch.sqrt(1 - alpha_bar_t_current) * eps_theta)/torch.sqrt(alpha_t_current)
-        x_new += torch.sqrt(sigma_current) * noise
+        x_new = mean + std * noise
     else:
-        x_new = (x  - (1 - alpha_t_current)/torch.sqrt(1 - alpha_bar_t_current) * eps_theta)/torch.sqrt(alpha_t_current)        
-    
+        x_new = mean
+
     if i % 100 == 0 or i == T-1:
         to_append = x_new.detach().clone()
         generated_images.append(to_append)
@@ -47,7 +64,8 @@ def noise_predictor_step(i, T, x, model,
     return x
 
 def denoising_step(i, T, x, model, generated_images,
-                   alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t):
+                   alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t,
+                   log_sigma_square_t_clipped, learned_variance):
     t_current = torch.tensor([i], device=x.device)
     
     alpha_t_current = alpha_t[t_current]
@@ -55,15 +73,23 @@ def denoising_step(i, T, x, model, generated_images,
     sigma_square_current = sigma_square_t[t_current]
     alpha_bar_t_minus_1_current = alpha_bar_t_minus_1[t_current]
 
-    x0_pred = model(x, t_current)
+    if not learned_variance:
+        x0_pred = model(x, t_current)
+        sigma_square_current = sigma_square_t[t_current]
+        std = torch.sqrt(sigma_square_current)
+    else:
+        x0_pred, var_theta = model(x, t_current)
+        log_sigma_square = compute_log_sigma_square(var_theta, t_current, log_sigma_square_t_clipped, alpha_t, use_single_batch=True)
+        std = torch.exp(0.5 * log_sigma_square)
+
     m1 = (1 - alpha_bar_t_minus_1_current)*torch.sqrt(alpha_t_current)*x
     m2 = (1 - alpha_t_current)*torch.sqrt(alpha_bar_t_minus_1_current)*x0_pred
-    mu_theta = (m1+m2)/(1 - alpha_bar_t_current)
+    mean = (m1+m2)/(1 - alpha_bar_t_current)
     if i > 0:
         noise = torch.randn_like(x).to(x.device)
-        x_new = mu_theta + torch.sqrt(sigma_square_current)*noise
+        x_new = mean + std*noise
     else:
-        x_new = mu_theta
+        x_new = mean
     
     if i % 100 == 0 or i == T-1:
         to_append = x_new.detach().clone()
@@ -72,23 +98,31 @@ def denoising_step(i, T, x, model, generated_images,
     return x_new
 
 def score_matching_step(i, T, x, model, diffusion_params, generated_images,
-                        alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t):
+                        alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t, 
+                        log_sigma_square_t_clipped, learned_variance):
     t_current = torch.tensor([i], device=x.device)
     
     alpha_t_current = alpha_t[t_current]
     alpha_bar_t_current = alpha_bar_t[t_current]
-    sigma_square_current = sigma_square_t[t_current]
     alpha_bar_t_minus_1_current = alpha_bar_t_minus_1[t_current]
 
-    score_theta = model(x, t_current)
+    if not learned_variance:
+        score_theta = model(x, t_current)
+        sigma_square_current = sigma_square_t[t_current]
+        std = torch.sqrt(sigma_square_current)
+    else:
+        score_theta, var_theta = model(x, t_current)
+        log_sigma_square = compute_log_sigma_square(var_theta, t_current, log_sigma_square_t_clipped, alpha_t, use_single_batch=True)
+        std = torch.exp(0.5 * log_sigma_square)
 
-    mu_q = x + (1 - alpha_t_current) * score_theta 
-    mu_q = mu_q / torch.sqrt(alpha_t_current)
+    mean = x + (1 - alpha_t_current) * score_theta 
+    mean = mean / torch.sqrt(alpha_t_current)
     if i > 0:
         noise = torch.randn_like(x).to(x.device)
-        x_new = mu_q + torch.sqrt(sigma_square_current)*noise
+        x_new = mean + std * noise
     else:
-        x_new = mu_q
+        x_new = mean
+
     if i % 100 == 0 or i == T-1:
         to_append = x_new.detach().clone()
         generated_images.append(to_append)
@@ -97,6 +131,7 @@ def score_matching_step(i, T, x, model, diffusion_params, generated_images,
 def sample(config, method):
     diffusion_params = config['diffusion_params']
     T = diffusion_params['T'] # TODO: check
+    learned_variance = config['model'].get('learned_variance', False) # or we can do model.learned_variance
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -111,40 +146,17 @@ def sample(config, method):
     with torch.no_grad():
         for i in tqdm(reversed(range(T)), total=T):
             if method == 'mean_predictor': # this does not work well
-                x = mean_predictor_step(i, T, x, model, generated_images, sigma_square_t)
+                x = mean_predictor_step(i, T, x, model, generated_images, sigma_square_t, alpha_t, log_sigma_square_t_clipped, learned_variance)
             elif method == 'noise_predictor':
-                x = noise_predictor_step(i, T, x, model, alpha_t, alpha_bar_t, sigma_square_t, generated_images)
+                x = noise_predictor_step(i, T, x, model, alpha_t, alpha_bar_t, sigma_square_t, generated_images, log_sigma_square_t_clipped, learned_variance)
             elif method == 'denoising':
-                x = denoising_step(i, T, x, model, diffusion_params, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t)
+                x = denoising_step(i, T, x, model, diffusion_params, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t, log_sigma_square_t_clipped, learned_variance)
             elif method == 'score_matching':
-                x = score_matching_step(i, T, x, model, diffusion_params, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t)
+                x = score_matching_step(i, T, x, model, diffusion_params, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t, log_sigma_square_t_clipped, learned_variance)
             else:
                 raise ValueError(f"Unknown sampling method: {method}")
             
     return x, generated_images
-
-def plot_generated_images(final_image, generated_images):
-    final_image = final_image.squeeze().cpu().numpy()
-    final_image = (final_image + 1) / 2  
-    plt.imshow(final_image, cmap='gray')
-
-    # plot_images = generated_images[-10:]
-    # take equally spaced 10 images from generated_images
-    plot_images = []
-    num_images = len(generated_images)
-    indices = torch.linspace(0, num_images - 1, steps=10).long()
-    for idx in indices:
-        plot_images.append(generated_images[idx])
-
-    fig, axes = plt.subplots(1, len(plot_images), figsize=(15, 3))
-    for ax, img in zip(axes, plot_images):
-        img = img.squeeze().cpu().numpy()
-        img = (img + 1) / 2  # Rescale to [0, 1]
-        # img = img.clip(0, 1)
-        ax.imshow(img)
-        ax.axis('off')
-    plt.show()
-
 
 if __name__ == "__main__":
     argparse = argparse.ArgumentParser()
@@ -154,4 +166,4 @@ if __name__ == "__main__":
 
     config = parse_config(args.config_path)
     final_image, generated_images = sample(config=config, method=args.sample_method)
-    plot_generated_images(final_image, generated_images)
+    plot_sample_generated_images(final_image, generated_images)
