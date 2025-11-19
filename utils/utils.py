@@ -1,4 +1,5 @@
 from model.unet import UNet
+from model.unet_conditional import UNet as UNetConditional
 import yaml
 import torch
 
@@ -12,6 +13,15 @@ def load_model(config):
     return model
 
 def load_pretrained_model(config):
-    model = UNet(**config['model'])
-    model.load_state_dict(torch.load(config['train']['checkpoint_path']))
+    if config['train']['use_guidance']:
+        model = UNetConditional(**config['model'])
+    else:
+        model = UNet(**config['model'])
+    
+    if config['train']['checkpoint_path']:
+        try:
+            model.load_state_dict(torch.load(config['train']['checkpoint_path']))
+        except:
+            print("COULDN'T LOAD TRAINED MODEL, RETURNING UNTRAINED MODEL")
+            return model
     return model
