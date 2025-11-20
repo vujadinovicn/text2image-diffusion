@@ -106,7 +106,7 @@ class AttentionBlock(nn.Module):
 
         return x + h                               # out: [B, C, H, W]
     
-class UNet(nn.Module):
+class UNetCond(nn.Module):
     def __init__(self, 
                  resolutions_list = [32, 16, 8, 4],
                  in_channels = 1,
@@ -132,14 +132,15 @@ class UNet(nn.Module):
         #############################
         self.num_classes = num_classes
         self.class_embedding = nn.Embedding(num_classes+1, T_dim) # +1 for NULL class (unconditioned generation)
-        # setting NULL embedding (last row) to zeros and prevent updates
-        with torch.no_grad():
-            self.class_embedding.weight[-1].zero_()
+        # # setting NULL embedding (last row) to zeros and prevent updates
+        # with torch.no_grad():
+        #     self.class_embedding.weight[-1].zero_()
         
-        mask = torch.ones_like(self.class_embedding.weight)
-        mask[-1].zero_()
-        # create a mask that zeros gradients for the last row, keep it on the same device
-        self.class_embedding.weight.register_hook(lambda grad, m=mask: grad * m)
+        # mask = torch.ones_like(self.class_embedding.weight)
+        # mask = mask.to('cuda')
+        # mask[-1].zero_()
+        # # create a mask that zeros gradients for the last row, keep it on the same device
+        # self.class_embedding.weight.register_hook(lambda grad, m=mask: grad * m)
 
 
         self.T_dim = T_dim

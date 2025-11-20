@@ -71,6 +71,39 @@ def denoising_step(i, T, x, model, generated_images,
     
     return x_new
 
+def conditional_score_matching_step(i, T, x, model, diffusion_params, generated_images,
+                        alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t, y, w=1.0):
+    
+    t_current = torch.tensor([i], device=x.device)
+
+    alpha_t_current = alpha_t[t_current]
+    alpha_bar_t_current = alpha_bar_t[t_current]
+    sigma_square_current = sigma_square_t[t_current]
+    alpha_bar_t_minus_1_current = alpha_bar_t_minus_1[t_current]
+    b = x.shape[0]
+
+    y = y.repeat(b).to(x.device) # SHAPE: (b,)
+    score_theta = model(x, t_current, y)
+
+    un_y = torch.tensor([3], device=x.device)
+    un_y = un_y.repeat(b)  # SHAPE: (b,)
+
+    uncond_score_theta = model(x, t_current, un_y)  
+
+    score_theta = (w+1)*score_theta - w*uncond_score_theta
+    
+    mu_q = x + (1 - alpha_t_current) * score_theta 
+    mu_q = mu_q / torch.sqrt(alpha_t_current)
+    if i > 0:
+        noise = torch.randn_like(x).to(x.device)
+        x_new = mu_q + torch.sqrt(sigma_square_current)*noise
+    else:
+        x_new = mu_q
+    if i % 100 == 0 or i == T-1:
+        to_append = x_new.detach().clone()
+        generated_images.append(to_append)
+    return x_new
+
 def score_matching_step(i, T, x, model, diffusion_params, generated_images,
                         alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t):
     t_current = torch.tensor([i], device=x.device)
@@ -119,6 +152,9 @@ def sample(config, method):
                 x = denoising_step(i, T, x, model, diffusion_params, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t)
             elif method == 'score_matching':
                 x = score_matching_step(i, T, x, model, diffusion_params, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t)
+            elif method == 'conditional_score_matching':
+                y = torch.tensor([2], device=device)  # generate class '2'
+                x = conditional_score_matching_step(i, T, x, model, diffusion_params, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t, y, w=1.0)
             else:
                 raise ValueError(f"Unknown sampling method: {method}")
             
@@ -150,7 +186,7 @@ def plot_generated_images(final_image, generated_images):
 if __name__ == "__main__":
     argparse = argparse.ArgumentParser()
     argparse.add_argument('--config_path', type=str, default='config/mnist.yml', help='Path to the configuration file.')
-    argparse.add_argument('--sample_method', type=str, default='mean_predictor', choices=["noise_predictor", "mean_predictor", "denoising", "score_matching"], help="Sampling method.")
+    argparse.add_argument('--sample_method', type=str, default='mean_predictor', choices=["noise_predictor", "mean_predictor", "denoising", "score_matching","conditional_score_matching"], help="Sampling method.")
     args = argparse.parse_args()
 
     config = parse_config(args.config_path)

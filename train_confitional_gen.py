@@ -14,10 +14,10 @@ def train(config):
     checkpoint_folder = config['train']['checkpoint_folder']
     allowed_classes = config['train']['allowed_classes']
     label_drop_prob = config['train'].get('label_drop_prob') # probability of dropping label for classifier-free guidance
-
+    print(config['train']['use_guidance'])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    null_class_label = len(allowed_classes) + 1
+    null_class_label = len(allowed_classes)
 
     train_loader = get_mnist_dataloader(batch_size=batch_size, split="train", allowed_classes=allowed_classes)
 
@@ -32,11 +32,9 @@ def train(config):
         for images, label in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}"):
             images = images.to(device)
             label = label.to(device)
-
-            ##################################################################
+            batch_size = images.shape[0]
             # remove this line when training on all classes starting from 0 to 9
             label = label - 1 # since we are training on classes 1,2,3
-            ##################################################################
 
             # randomly drop labels for classifier-free guidance
             mask = torch.rand(label.shape, device=device) < label_drop_prob
@@ -65,7 +63,7 @@ def train(config):
         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_loss:.4f}")
         print()
         if (epoch+1)%10 == 0:
-            torch.save(model.state_dict(), f"{checkpoint_folder}/model_epoch_sm_{epoch+1}.pth")
+            torch.save(model.state_dict(), f"{checkpoint_folder}/model_epoch_conditional_{epoch+1}.pth")
 
 if __name__ == "__main__":
     argparse = argparse.ArgumentParser()
