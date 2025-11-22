@@ -72,7 +72,7 @@ def denoising_step(i, T, x, model, generated_images,
     return x_new
 
 def conditional_score_matching_step(i, T, x, model, diffusion_params, generated_images,
-                        alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t, y, w=1.0):
+                        alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t, y, w=-1.0):
     
     t_current = torch.tensor([i], device=x.device)
 
@@ -127,9 +127,10 @@ def score_matching_step(i, T, x, model, diffusion_params, generated_images,
         generated_images.append(to_append)
     return x_new
 
-def sample(config, method):
+def sample(config, method, batch_size=8):
     diffusion_params = config['diffusion_params']
     T = diffusion_params['T'] # TODO: check
+    B = batch_size
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -137,8 +138,7 @@ def sample(config, method):
     model.eval()
 
     generated_images = []
-    x = torch.randn(1, 1, 32, 32).to(device)
-
+    x = torch.randn(B, 1, 32, 32).to(device)
     
     alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t = get_constants(device, **diffusion_params)
 
@@ -149,37 +149,40 @@ def sample(config, method):
             elif method == 'noise_predictor':
                 x = noise_predictor_step(i, T, x, model, alpha_t, alpha_bar_t, sigma_square_t, generated_images)
             elif method == 'denoising':
-                x = denoising_step(i, T, x, model, diffusion_params, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t)
+                x = denoising_step(i, T, x, model, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t)
+                # i, T, x, model, generated_images,
+                #    alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t
             elif method == 'score_matching':
                 x = score_matching_step(i, T, x, model, diffusion_params, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t)
             elif method == 'conditional_score_matching':
-                y = torch.tensor([2], device=device)  # generate class '2'
-                x = conditional_score_matching_step(i, T, x, model, diffusion_params, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t, y, w=1.0)
+                y = torch.tensor([0], device=device)  # generate class '2'
+                x = conditional_score_matching_step(i, T, x, model, diffusion_params, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t, y, w=-1.0)
             else:
                 raise ValueError(f"Unknown sampling method: {method}")
             
     return x, generated_images
 
-def plot_generated_images(final_image, generated_images):
-    final_image = final_image.squeeze().cpu().numpy()
-    final_image = (final_image + 1) / 2  
-    plt.imshow(final_image, cmap='gray')
+def plot_generated_images(final_image, generated_images, n_show=8):
+    """
+    Show up to `n_show` images from the batch in final_image.
+    final_image: tensor of shape (B, 1, H, W)
+    """
+    final_image = final_image.detach().cpu()
+    B = final_image.shape[0]
+    n_show = min(n_show, B)
 
-    # plot_images = generated_images[-10:]
-    # take equally spaced 10 images from generated_images
-    plot_images = []
-    num_images = len(generated_images)
-    indices = torch.linspace(0, num_images - 1, steps=10).long()
-    for idx in indices:
-        plot_images.append(generated_images[idx])
+    # select first n_show images and remove channel dim
+    imgs = final_image[:n_show].squeeze(1).numpy()  # shape: (n_show, H, W)
+    imgs = (imgs + 1.0) / 2.0  # rescale to [0,1]
 
-    fig, axes = plt.subplots(1, len(plot_images), figsize=(15, 3))
-    for ax, img in zip(axes, plot_images):
-        img = img.squeeze().cpu().numpy()
-        img = (img + 1) / 2  # Rescale to [0, 1]
-        # img = img.clip(0, 1)
-        ax.imshow(img)
+    fig, axes = plt.subplots(1, n_show, figsize=(n_show * 2, 2))
+    if n_show == 1:
+        axes = [axes]
+    for ax, img in zip(axes, imgs):
+        ax.imshow(img, cmap='gray', vmin=0, vmax=1)
         ax.axis('off')
+
+    plt.tight_layout()
     plt.show()
 
 
@@ -187,8 +190,21 @@ if __name__ == "__main__":
     argparse = argparse.ArgumentParser()
     argparse.add_argument('--config_path', type=str, default='config/mnist.yml', help='Path to the configuration file.')
     argparse.add_argument('--sample_method', type=str, default='mean_predictor', choices=["noise_predictor", "mean_predictor", "denoising", "score_matching","conditional_score_matching"], help="Sampling method.")
+    argparse.add_argument('--save_folder', type=str, default='../checkpoints/images_gen', help='Path to the configuration file.')
+    argparse.add_argument('--show_images', action='store_true', help='If set, display images; otherwise save them to --save_folder.')
+    argparse.add_argument('--batch_size', type=int, default=8, help='Batch size for sampling.')
     args = argparse.parse_args()
 
     config = parse_config(args.config_path)
-    final_image, generated_images = sample(config=config, method=args.sample_method)
-    plot_generated_images(final_image, generated_images)
+    final_image, generated_images = sample(config=config, method=args.sample_method, batch_size=args.batch_size)
+    if args.show_images:
+        plot_generated_images(final_image, generated_images)
+    else:
+        import os
+        os.makedirs(args.save_folder, exist_ok=True)
+        # save final image
+        final = final_image.squeeze().cpu().numpy()
+        final = (final + 1) / 2
+        for i in range(args.batch_size):
+            plt.imsave(os.path.join(args.save_folder, f'final_image_{i}.png'), final[i], cmap='gray')
+        
