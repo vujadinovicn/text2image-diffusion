@@ -1,6 +1,6 @@
 import torch
 from data.mnist_dataloader import get_mnist_dataloader
-from loss.losses import variational_lower_bound_loss, variational_lower_bound_loss2, get_constants, noise_predictor_loss, compute_log_sigma_square
+from loss.losses import variational_lower_bound_loss, vlb_openai_like, get_constants, noise_predictor_loss, compute_log_sigma_square
 from tqdm import tqdm
 from utils.utils import parse_config, load_model
 import argparse, os
@@ -43,14 +43,25 @@ def train(config):
             if not learned_variance:
                 mu_theta = model(x_t, t_batch)
                 if config["train"]["loss"] == "mean_predictor_loss":
-                    loss, loss_non0, loss_0 = variational_lower_bound_loss(mu_theta,
-                                        original_x = images,
-                                        noisy_x = x_t,
-                                        batch_t = t_batch,
-                                        alpha_t = alpha_t, 
-                                        alpha_bar_t = alpha_bar_t, 
-                                        alpha_bar_t_minus_1 = alpha_bar_t_minus_1, 
-                                        sigma_square_t = sigma_square_t)
+                        loss_vb, loss_non0, loss_0 = vlb_openai_like(
+                        mu_theta=mu_theta,             
+                        original_x=images,
+                        noisy_x=x_t,
+                        batch_t=t_batch,
+                        alpha_t=alpha_t,
+                        alpha_bar_t=alpha_bar_t,
+                        alpha_bar_t_minus_1=alpha_bar_t_minus_1,
+                        log_sigma_square_t_clipped=log_sigma_square_t_clipped, 
+                        log_sigma_square=log_sigma_square_t_clipped, 
+                    )
+                    # loss, loss_non0, loss_0 = variational_lower_bound_loss(mu_theta,
+                    #                     original_x = images,
+                    #                     noisy_x = x_t,
+                    #                     batch_t = t_batch,
+                    #                     alpha_t = alpha_t, 
+                    #                     alpha_bar_t = alpha_bar_t, 
+                    #                     alpha_bar_t_minus_1 = alpha_bar_t_minus_1, 
+                    #                     sigma_square_t = sigma_square_t)
                     
                 elif config["train"]["loss"] == "noise_predictor_loss":
                     true_noise = (x_t - torch.sqrt(alpha_bar_t_batch)*images)/torch.sqrt(1 - alpha_bar_t_batch)
@@ -62,7 +73,7 @@ def train(config):
                 true_noise = (x_t - torch.sqrt(alpha_bar_t_batch)*images)/torch.sqrt(1 - alpha_bar_t_batch)
                 loss_simple, loss_non0, loss_0 = noise_predictor_loss(mu_theta, true_noise)
 
-                loss_vb, _, _ = variational_lower_bound_loss2(
+                loss_vb, _, _ = vlb_openai_like(
                     mu_theta=mu_theta.detach(),
                     original_x=images,
                     noisy_x=x_t,
@@ -94,7 +105,7 @@ def train(config):
         print()
         if (epoch+1)%10 == 0 or epoch == num_epochs - 1:
             os.makedirs(checkpoint_folder, exist_ok=True)
-            torch.save(model.state_dict(), f"{checkpoint_folder}/nem_model_epoch_{epoch+1}.pth")
+            torch.save(model.state_dict(), f"{checkpoint_folder}/kshitij_model_epoch_{epoch+1}.pth")
 
 if __name__ == "__main__":
     argparse = argparse.ArgumentParser()
