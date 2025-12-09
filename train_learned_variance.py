@@ -43,7 +43,7 @@ def train(config):
             if not learned_variance:
                 mu_theta = model(x_t, t_batch)
                 if config["train"]["loss"] == "mean_predictor_loss":
-                        loss_vb, loss_non0, loss_0 = vlb_openai_like(
+                        loss, loss_non0, loss_0 = vlb_openai_like(
                         mu_theta=mu_theta,             
                         original_x=images,
                         noisy_x=x_t,
@@ -53,6 +53,7 @@ def train(config):
                         alpha_bar_t_minus_1=alpha_bar_t_minus_1,
                         log_sigma_square_t_clipped=log_sigma_square_t_clipped, 
                         log_sigma_square=log_sigma_square_t_clipped, 
+                        fixed_var=True,
                     )
                     # loss, loss_non0, loss_0 = variational_lower_bound_loss(mu_theta,
                     #                     original_x = images,
@@ -83,6 +84,7 @@ def train(config):
                     alpha_bar_t_minus_1=alpha_bar_t_minus_1,
                     log_sigma_square_t_clipped=log_sigma_square_t_clipped,
                     log_sigma_square=log_sigma_square,
+                    fixed_var=False,
                 )
 
                 # weight VB term like RESCALED_MSE: * (T / 1000)

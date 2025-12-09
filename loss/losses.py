@@ -138,11 +138,14 @@ def compute_nll(x, mean):
 # https://github.com/openai/improved-diffusion/blob/main/improved_diffusion/gaussian_diffusion.py
 def vlb_openai_like(mu_theta, original_x, noisy_x, batch_t,
                     alpha_t, alpha_bar_t, alpha_bar_t_minus_1,
-                    log_sigma_square_t_clipped, log_sigma_square):
+                    log_sigma_square_t_clipped, log_sigma_square, fixed_var=False):
     
     alpha_t, alpha_bar_t, alpha_bar_t_minus_1, log_sigma_square_t_clipped = transform_timestep_data(batch_t, alpha_t, 
                                                                                         alpha_bar_t, alpha_bar_t_minus_1, log_sigma_square_t_clipped)  
     
+    if fixed_var:
+        log_sigma_square = log_sigma_square_t_clipped
+        
     mu_q, alpha_bar_t = compute_mu_q(original_x, noisy_x, alpha_t, alpha_bar_t, alpha_bar_t_minus_1)
 
     t_0_indices = (batch_t==0)    
