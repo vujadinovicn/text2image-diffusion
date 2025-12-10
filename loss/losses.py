@@ -138,7 +138,8 @@ def compute_nll(x, mean):
 # https://github.com/openai/improved-diffusion/blob/main/improved_diffusion/gaussian_diffusion.py
 def vlb_openai_like(mu_theta, original_x, noisy_x, batch_t,
                     alpha_t, alpha_bar_t, alpha_bar_t_minus_1,
-                    log_sigma_square_t_clipped, log_sigma_square, fixed_var=False):
+                    log_sigma_square_t_clipped, log_sigma_square, 
+                    fixed_var=False, compute_mean=True):
     
     alpha_t, alpha_bar_t, alpha_bar_t_minus_1, log_sigma_square_t_clipped = transform_timestep_data(batch_t, alpha_t, 
                                                                                         alpha_bar_t, alpha_bar_t_minus_1, log_sigma_square_t_clipped)  
@@ -157,8 +158,24 @@ def vlb_openai_like(mu_theta, original_x, noisy_x, batch_t,
     nll = compute_nll(x=original_x, mean=mu_theta)
     nll = nll.mean(dim=list(range(1, nll.dim()))) / math.log(2.0)
 
-    loss = torch.where(t_0_indices, nll, kl).mean()
-    loss_non0 = kl[t_non0_indices].mean() if t_non0_indices.any() else torch.tensor(0.0, device=mu_theta.device)
-    loss_0 = nll[t_0_indices].mean() if t_0_indices.any() else torch.tensor(0.0, device=mu_theta.device)
+    if compute_mean:
+        loss = torch.where(t_0_indices, nll, kl).mean()
+        loss_non0 = kl[t_non0_indices].mean() if t_non0_indices.any() else torch.tensor(0.0, device=mu_theta.device)
+        loss_0 = nll[t_0_indices].mean() if t_0_indices.any() else torch.tensor(0.0, device=mu_theta.device)
 
-    return loss, loss_non0.item(), loss_0.item()
+        return loss, loss_non0.item(), loss_0.item()
+    else:
+        vb_t = torch.where(t_0_indices, nll, kl)
+        return vb_t, kl, nll
+    
+def prior_bpd(original_x, alpha_bar_T):
+    mean1 = torch.sqrt(alpha_bar_T) * original_x
+    var1 = (1.0 - alpha_bar_T)
+
+    mean2 = torch.zeros_like(mean1)
+    var2 = 1.0
+
+    kl = 0.5 * (torch.log(var2 / var1) + (var1 + (mean1 - mean2) ** 2) / var2 - 1.0)
+    kl = kl.view(kl.shape[0], -1).mean(dim=1) / math.log(2.0)
+    
+    return kl
