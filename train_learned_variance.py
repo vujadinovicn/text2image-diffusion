@@ -1,6 +1,6 @@
 import torch
 from data.mnist_dataloader import get_mnist_dataloader
-from loss.losses import variational_lower_bound_loss, vlb_openai_like, get_constants, noise_predictor_loss, compute_log_sigma_square
+from loss.losses import compute_mu_q, vlb_openai_like, get_constants, noise_predictor_loss, compute_log_sigma_square
 from tqdm import tqdm
 from utils.utils import parse_config, load_model
 import argparse, os
@@ -74,8 +74,11 @@ def train(config):
                 true_noise = (x_t - torch.sqrt(alpha_bar_t_batch)*images)/torch.sqrt(1 - alpha_bar_t_batch)
                 loss_simple, loss_non0, loss_0 = noise_predictor_loss(mu_theta, true_noise)
 
+                x0_pred = (x_t - torch.sqrt(1 - alpha_bar_t_batch)*mu_theta) / torch.sqrt(alpha_bar_t_batch)
+                mu_theta_pred, _ = compute_mu_q(x0_pred, x_t, alpha_t, alpha_bar_t, alpha_bar_t_minus_1)
+
                 loss_vb, _, _ = vlb_openai_like(
-                    mu_theta=mu_theta.detach(),
+                    mu_theta=mu_theta_pred.detach(),
                     original_x=images,
                     noisy_x=x_t,
                     batch_t=t_batch,
