@@ -1,24 +1,25 @@
 import matplotlib.pyplot as plt
 import torch
 
-def plot_sample_generated_images(final_image, generated_images):
-    final_image = final_image.squeeze().cpu().numpy()
-    final_image = (final_image + 1) / 2  
-    plt.imshow(final_image, cmap='gray')
+def plot_generated_images(final_image, n_show=8):
+    """
+    Show up to `n_show` images from the batch in final_image.
+    final_image: tensor of shape (B, 1, H, W)
+    """
+    final_image = final_image.detach().cpu()
+    B = final_image.shape[0]
+    n_show = min(n_show, B)
 
-    # plot_images = generated_images[-10:]
-    # take equally spaced 10 images from generated_images
-    plot_images = []
-    num_images = len(generated_images)
-    indices = torch.linspace(0, num_images - 1, steps=10).long()
-    for idx in indices:
-        plot_images.append(generated_images[idx])
+    # select first n_show images and remove channel dim
+    imgs = final_image[:n_show].squeeze(1).numpy()  # shape: (n_show, H, W)
+    imgs = (imgs + 1.0) / 2.0  # rescale to [0,1]
 
-    fig, axes = plt.subplots(1, len(plot_images), figsize=(15, 3))
-    for ax, img in zip(axes, plot_images):
-        img = img.squeeze().cpu().numpy()
-        img = (img + 1) / 2  # Rescale to [0, 1]
-        # img = img.clip(0, 1)
-        ax.imshow(img)
+    fig, axes = plt.subplots(1, n_show, figsize=(n_show * 2, 2))
+    if n_show == 1:
+        axes = [axes]
+    for ax, img in zip(axes, imgs):
+        ax.imshow(img, cmap='gray', vmin=0, vmax=1)
         ax.axis('off')
+
+    plt.tight_layout()
     plt.show()

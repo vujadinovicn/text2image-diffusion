@@ -116,3 +116,5 @@ Following are a few images sampled from our model which was trained for 50 epoch
 * Add evaluation scripts.
 * Add score-generation loss.
 * Add conditional generation.
+* Delete train_learned_variance.py, sampling_mean_prediction.py sampling_noise_prediction.py files once fully checked.
+

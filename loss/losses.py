@@ -76,7 +76,6 @@ def denoising_loss(estimated_x0,
     # loss = loss.view(loss.shape[0], -1).sum(dim=-1).mean()
     # return loss, 0.0, 0.0
 
-
 def transform_timestep_data(batch_t, *data):
     return [d[batch_t].view(-1, 1, 1, 1) for d in data]
 
@@ -127,13 +126,6 @@ def variational_lower_bound_loss(mu_theta,
         loss_0 = loss_0.view(loss_0.shape[0],-1).sum(dim=-1).mean()
 
     return loss_non0 + loss_0, loss_non0.item(), loss_0.item()
-
-def compute_normal_kl(mean1, logvar1, mean2, logvar2):
-    var1, var2 = torch.exp(logvar1), torch.exp(logvar2)
-    return 0.5 * (logvar2 - logvar1 + (var1 + (mean1 - mean2) ** 2) / var2 - 1.0)
-
-def compute_nll(x, mean):
-    return 0.5 * ((x - mean) ** 2 + math.log(2.0))
     
 # https://github.com/openai/improved-diffusion/blob/main/improved_diffusion/gaussian_diffusion.py
 def vlb_openai_like(mu_theta, original_x, noisy_x, batch_t,
@@ -168,6 +160,13 @@ def vlb_openai_like(mu_theta, original_x, noisy_x, batch_t,
         vb_t = torch.where(t_0_indices, nll, kl)
         return vb_t, kl, nll
     
+def compute_normal_kl(mean1, logvar1, mean2, logvar2):
+    var1, var2 = torch.exp(logvar1), torch.exp(logvar2)
+    return 0.5 * (logvar2 - logvar1 + (var1 + (mean1 - mean2) ** 2) / var2 - 1.0)
+
+def compute_nll(x, mean):
+    return 0.5 * ((x - mean) ** 2 + math.log(2.0))
+
 def prior_bpd(original_x, alpha_bar_t):
     mean1 = torch.sqrt(alpha_bar_t) * original_x
     var1 = (1.0 - alpha_bar_t)
