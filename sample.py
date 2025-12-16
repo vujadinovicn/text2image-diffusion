@@ -6,17 +6,12 @@ from utils.utils import parse_config, load_pretrained_model
 from utils.plotting import plot_generated_images
 import argparse
 
-def mean_predictor_step(i, T, x, model, generated_images, sigma_current, alpha_t, log_sigma_square_t_clipped, learned_variance):
+def mean_predictor_step(i, T, x, model, generated_images, sigma_current):
     t_current = torch.tensor([i], device=x.device)  
 
-    if not learned_variance:  
-        mu_theta = model(x, t_current)
-        sigma_current = sigma_current[t_current]
-        std = torch.sqrt(sigma_current)
-    else:
-        mu_theta, var_theta = model(x, t_current)
-        log_sigma_square = compute_log_sigma_square(var_theta, t_current, log_sigma_square_t_clipped, alpha_t, use_single_batch=True)
-        std = torch.exp(0.5 * log_sigma_square)
+    mu_theta = model(x, t_current)
+    sigma_current = sigma_current[t_current]
+    std = torch.sqrt(sigma_current)
 
     mean = mu_theta
     if i > 0:
@@ -60,27 +55,19 @@ def noise_predictor_step(i, T, x, model,
         generated_images.append(to_append)
     
     x = x_new
-
     return x
 
 def denoising_step(i, T, x, model, generated_images,
-                   alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t,
-                   log_sigma_square_t_clipped, learned_variance):
+                   alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t):
     t_current = torch.tensor([i], device=x.device)
 
     alpha_t_current = alpha_t[t_current]
     alpha_bar_t_current = alpha_bar_t[t_current]
-    sigma_square_current = sigma_square_t[t_current]
     alpha_bar_t_minus_1_current = alpha_bar_t_minus_1[t_current]
 
-    if not learned_variance:
-        x0_pred = model(x, t_current)
-        sigma_square_current = sigma_square_t[t_current]
-        std = torch.sqrt(sigma_square_current)
-    else:
-        x0_pred, var_theta = model(x, t_current)
-        log_sigma_square = compute_log_sigma_square(var_theta, t_current, log_sigma_square_t_clipped, alpha_t, use_single_batch=True)
-        std = torch.exp(0.5 * log_sigma_square)
+    x0_pred = model(x, t_current)
+    sigma_square_current = sigma_square_t[t_current]
+    std = torch.sqrt(sigma_square_current)
 
     m1 = (1 - alpha_bar_t_minus_1_current)*torch.sqrt(alpha_t_current)*x
     m2 = (1 - alpha_t_current)*torch.sqrt(alpha_bar_t_minus_1_current)*x0_pred
@@ -97,15 +84,13 @@ def denoising_step(i, T, x, model, generated_images,
     
     return x_new
 
-def conditional_score_matching_step(i, T, x, model, diffusion_params, generated_images,
-                        alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t, y, w=-1.0):
+def conditional_score_matching_step(i, T, x, model, generated_images,
+                        alpha_t, sigma_square_t, y, w=-1.0):
     
     t_current = torch.tensor([i], device=x.device)
 
     alpha_t_current = alpha_t[t_current]
-    alpha_bar_t_current = alpha_bar_t[t_current]
     sigma_square_current = sigma_square_t[t_current]
-    alpha_bar_t_minus_1_current = alpha_bar_t_minus_1[t_current]
     b = x.shape[0]
 
     y = y.repeat(b).to(x.device) # SHAPE: (b,)
@@ -131,22 +116,15 @@ def conditional_score_matching_step(i, T, x, model, diffusion_params, generated_
     return x_new
 
 def score_matching_step(i, T, x, model, generated_images,
-                        alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t, 
-                        log_sigma_square_t_clipped, learned_variance):
+                        alpha_t, sigma_square_t):
     t_current = torch.tensor([i], device=x.device)
     
     alpha_t_current = alpha_t[t_current]
-    alpha_bar_t_current = alpha_bar_t[t_current]
-    alpha_bar_t_minus_1_current = alpha_bar_t_minus_1[t_current]
+    sigma_square_current = sigma_square_t[t_current]
 
-    if not learned_variance:
-        score_theta = model(x, t_current)
-        sigma_square_current = sigma_square_t[t_current]
-        std = torch.sqrt(sigma_square_current)
-    else:
-        score_theta, var_theta = model(x, t_current)
-        log_sigma_square = compute_log_sigma_square(var_theta, t_current, log_sigma_square_t_clipped, alpha_t, use_single_batch=True)
-        std = torch.exp(0.5 * log_sigma_square)
+    score_theta = model(x, t_current)
+    sigma_square_current = sigma_square_t[t_current]
+    std = torch.sqrt(sigma_square_current)
 
     mean = x + (1 - alpha_t_current) * score_theta 
     mean = mean / torch.sqrt(alpha_t_current)
@@ -180,16 +158,16 @@ def sample(config, method, batch_size=8):
     with torch.no_grad():
         for i in tqdm(reversed(range(T)), total=T):
             if method == 'mean_predictor': # this does not work well
-                x = mean_predictor_step(i, T, x, model, generated_images, sigma_square_t, alpha_t, log_sigma_square_t_clipped, learned_variance)
-            elif method == 'noise_predictor':
+                x = mean_predictor_step(i, T, x, model, generated_images, sigma_square_t)
+            elif method == 'noise_predictor': # this loss includes learned variance
                 x = noise_predictor_step(i, T, x, model, alpha_t, alpha_bar_t, sigma_square_t, generated_images, log_sigma_square_t_clipped, learned_variance)
             elif method == 'denoising':
-                x = denoising_step(i, T, x, model, diffusion_params, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t, log_sigma_square_t_clipped, learned_variance)
+                x = denoising_step(i, T, x, model, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t)
             elif method == 'score_matching':
-                x = score_matching_step(i, T, x, model, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t, log_sigma_square_t_clipped, learned_variance)
+                x = score_matching_step(i, T, x, model, generated_images, alpha_t, sigma_square_t)
             elif method == 'conditional_score_matching':
                 y = torch.tensor([0], device=device)  # generate class '2'
-                x = conditional_score_matching_step(i, T, x, model, diffusion_params, generated_images, alpha_t, alpha_bar_t, alpha_bar_t_minus_1, sigma_square_t, y, w=-1.0)
+                x = conditional_score_matching_step(i, T, x, model, generated_images, alpha_t, sigma_square_t, y, w=-1.0)
             else:
                 raise ValueError(f"Unknown sampling method: {method}")
             

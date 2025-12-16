@@ -4,9 +4,6 @@ from loss.losses import vlb_openai_like, prior_bpd, get_constants, compute_log_s
 from tqdm import tqdm
 from utils.utils import parse_config, load_pretrained_model, load_model
 import argparse
-import math 
-
-
 
 def evaluate_nll(config):
     batch_size = config['eval']['batch_size']
@@ -41,14 +38,12 @@ def evaluate_nll(config):
                         alpha_t_batch = alpha_t[t_batch].view(-1, 1, 1, 1)
                         sigma_square = sigma_square_t[t_batch].view(-1, 1, 1, 1)
                         log_sigma_square = torch.log(sigma_square.clamp(min=1e-20))
-
-                        mu_theta = (x_t - (1 - alpha_t_batch) / torch.sqrt(1 - alpha_bar_t_batch) * eps_theta) / torch.sqrt(alpha_t_batch)
                     else:
                         eps_theta, var_theta = model(x_t, t_batch)
                         log_sigma_square = compute_log_sigma_square(var_theta, t_batch, log_sigma_square_t_clipped, alpha_t, use_single_batch=False)
                         alpha_t_batch = alpha_t[t_batch].view(-1, 1, 1, 1)
                         
-                        mu_theta = (x_t - (1 - alpha_t_batch) / torch.sqrt(1 - alpha_bar_t_batch) * eps_theta) / torch.sqrt(alpha_t_batch)
+                    mu_theta = (x_t - (1 - alpha_t_batch) / torch.sqrt(1 - alpha_bar_t_batch) * eps_theta) / torch.sqrt(alpha_t_batch)
                         
                     vb_t, _, _ = vlb_openai_like(
                         mu_theta=mu_theta,

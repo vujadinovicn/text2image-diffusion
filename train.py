@@ -1,6 +1,6 @@
 import torch
 from data.mnist_dataloader import get_mnist_dataloader
-from loss.losses import variational_lower_bound_loss, get_constants, noise_predictor_loss, mean_predictor_loss, denoising_loss, score_matching_loss, compute_log_sigma_square, vlb_openai_like
+from loss.losses import variational_lower_bound_loss, get_constants, noise_predictor_loss, mean_predictor_loss, denoising_loss, score_matching_loss, compute_log_sigma_square, vlb_openai_like, compute_mu_q
 from tqdm import tqdm
 from utils.utils import parse_config, load_model
 import argparse
@@ -12,6 +12,7 @@ def train(config):
     checkpoint_folder = config['train']['checkpoint_folder']
     allowed_classes = config['train']['allowed_classes']
     learned_variance = config['model']['learned_variance']
+    print("Using learned variance: ", learned_variance)
     T = config['diffusion_params']['T']
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -26,8 +27,7 @@ def train(config):
         total_loss = 0
         total_loss_non0 = 0
         total_loss_0 = 0
-        total_loss_mu = 0
-        total_loss_var = 0
+        total_loss_vlb = 0
         for images, _ in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}"):
             images = images.to(device)
             batch_size = images.size(0)
@@ -37,21 +37,16 @@ def train(config):
             alpha_bar_t_batch = alpha_bar_t[t_batch].view(-1, 1, 1, 1)
             alpha_t_batch = alpha_t[t_batch].view(-1, 1, 1, 1)
             alpha_bar_t_minus_1_batch = alpha_bar_t_minus_1[t_batch].view(-1, 1, 1, 1)
-            sigma_square_t_batch = sigma_square_t[t_batch].view(-1, 1, 1, 1)
 
             # create the noisy image
             x_t = torch.sqrt(alpha_bar_t_batch)*images + torch.sqrt(1 - alpha_bar_t_batch)*torch.randn_like(images)
 
             optimizer.zero_grad()
-            if not learned_variance:
-                mu_theta = model(x_t, t_batch)
-            else:
-                mu_theta, var_theta = model(x_t, t_batch)
 
-            # compute mu loss
             if config["train"]["loss"] == "variational_lower_bound_loss":
                 # this is basically a weighted mean predictor loss 
-                loss_mu, loss_non0, loss_0 = variational_lower_bound_loss(mu_theta,
+                mu_theta = model(x_t, t_batch)
+                loss, loss_non0, loss_0 = variational_lower_bound_loss(mu_theta,
                                     original_x = images,
                                     noisy_x = x_t,
                                     batch_t = t_batch,
@@ -61,12 +56,50 @@ def train(config):
                                     sigma_square_t = sigma_square_t)
                 
             elif config["train"]["loss"] == "noise_predictor_loss":
+                # this loss supports both fixed and learned variance
+                if not learned_variance:
+                    mu_theta = model(x_t, t_batch)
+                else:
+                    mu_theta, var_theta = model(x_t, t_batch)
+
                 true_noise = (x_t - torch.sqrt(alpha_bar_t_batch)*images)/torch.sqrt(1 - alpha_bar_t_batch)
-                loss_mu, loss_non0, loss_0 = noise_predictor_loss(mu_theta, true_noise)
+                loss_theta, loss_non0, loss_0 = noise_predictor_loss(mu_theta, true_noise)
             
+                # compute reverse variance loss
+                if learned_variance:
+                    log_sigma_square = compute_log_sigma_square(var_theta, t_batch, log_sigma_square_t_clipped, alpha_t, use_single_batch=False)
+                    x0_pred = (x_t - torch.sqrt(1 - alpha_bar_t_batch) * mu_theta) / torch.sqrt(alpha_bar_t_batch)
+
+                    mu_theta_pred, _ = compute_mu_q(
+                        original_x = x0_pred,
+                        noisy_x = x_t,
+                        alpha_t = alpha_t_batch,
+                        alpha_bar_t = alpha_bar_t_batch,
+                        alpha_bar_t_minus_1 = alpha_bar_t_minus_1_batch,
+                    )
+
+                    loss_vlb, _, _ = vlb_openai_like(
+                        mu_theta = mu_theta_pred.detach(),
+                        original_x = images,
+                        noisy_x = x_t,
+                        batch_t = t_batch,
+                        alpha_t = alpha_t,
+                        alpha_bar_t = alpha_bar_t,
+                        alpha_bar_t_minus_1 = alpha_bar_t_minus_1,
+                        log_sigma_square_t_clipped = log_sigma_square_t_clipped,
+                        log_sigma_square = log_sigma_square,
+                        fixed_var = False,
+                    )
+
+                    lambda_vlb = 1000.0
+                    loss_vlb *= lambda_vlb
+                
+                loss = loss_theta if not learned_variance else loss_theta + loss_vlb
+
             elif config["train"]["loss"] == "mean_predictor_loss":
                 # this is the VLB loss without the weighting
-                loss_mu, loss_non0, loss_0 = mean_predictor_loss(mu_theta,
+                mu_theta = model(x_t, t_batch)
+                loss, loss_non0, loss_0 = mean_predictor_loss(mu_theta,
                                         noisy_x = x_t,
                                         original_x = images,
                                         alpha_t = alpha_t_batch,
@@ -75,51 +108,33 @@ def train(config):
             
             elif config["train"]["loss"] == "denoising_loss":
                 # predict x0 directly and compute MSE
-                loss_mu, loss_non0, loss_0 = denoising_loss(mu_theta, images)
+                x0_pred = model(x_t, t_batch)
+                loss, loss_non0, loss_0 = denoising_loss(x0_pred, images)
 
             elif config["train"]["loss"] == "score_matching_loss":
-                loss_mu, loss_non0, loss_0 = score_matching_loss(mu_theta, images, x_t, alpha_bar_t_batch)
+                score_pred = model(x_t, t_batch)
+                loss, loss_non0, loss_0 = score_matching_loss(score_pred, images, x_t, alpha_bar_t_batch)
 
             else:
                 raise ValueError(f"Unknown loss function: {config['train']['loss']}")
             
-            # compute var loss
-            loss_var = torch.tensor(0.0, device=device) # initial state; also works if learned_variance is False
-            if learned_variance:
-                log_sigma_square = compute_log_sigma_square(var_theta, t_batch, log_sigma_square_t_clipped, alpha_t, use_single_batch=False)
-                loss_var, _, _ = vlb_openai_like(
-                    mu_theta=mu_theta.detach(),
-                    original_x=images,
-                    noisy_x=x_t,
-                    batch_t=t_batch,
-                    alpha_t=alpha_t,
-                    alpha_bar_t=alpha_bar_t,
-                    alpha_bar_t_minus_1=alpha_bar_t_minus_1,
-                    log_sigma_square_t_clipped=log_sigma_square_t_clipped,
-                    log_sigma_square=log_sigma_square,
-                )
-
-                # weight VB term like RESCALED_MSE: * (T / 1000)
-                lambda_vb = T / 1000.0
-                loss_var *= lambda_vb
-
-            loss = loss_mu + loss_var
             loss.backward()
             optimizer.step()
-
             total_loss += loss.item()
-            total_loss_mu += loss_mu.item()
-            total_loss_var += loss_var.item()
             total_loss_non0 += loss_non0
             total_loss_0 += loss_0
 
+            if learned_variance:
+                total_loss_vlb += loss_vlb.item()
+
         avg_loss = total_loss / len(train_loader)
-        avg_loss_mu = total_loss_mu / len(train_loader)
-        avg_loss_var = total_loss_var / len(train_loader)
         avg_loss_non0 = total_loss_non0 / len(train_loader)
         avg_loss_0 = total_loss_0 / len(train_loader)
         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_loss:.4f}")
-        print(f"Mu Loss: {avg_loss_mu:.4f}, Var Loss: {avg_loss_var:.4f}")
+        
+        if learned_variance:
+            avg_loss_vlb = total_loss_vlb / len(train_loader)
+            print(f"Var Loss: {avg_loss_vlb:.4f}")
         print(f"Denoising Loss (t>0): {avg_loss_non0:.4f}, Reconstruction Loss (t=0): {avg_loss_0:.4f}")
         print()
         if (epoch+1)%10 == 0:
