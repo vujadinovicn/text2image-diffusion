@@ -168,9 +168,9 @@ def vlb_openai_like(mu_theta, original_x, noisy_x, batch_t,
         vb_t = torch.where(t_0_indices, nll, kl)
         return vb_t, kl, nll
     
-def prior_bpd(original_x, alpha_bar_T):
-    mean1 = torch.sqrt(alpha_bar_T) * original_x
-    var1 = (1.0 - alpha_bar_T)
+def prior_bpd(original_x, alpha_bar_t):
+    mean1 = torch.sqrt(alpha_bar_t) * original_x
+    var1 = (1.0 - alpha_bar_t)
 
     mean2 = torch.zeros_like(mean1)
     var2 = 1.0

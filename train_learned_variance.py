@@ -68,14 +68,24 @@ def train(config):
                     true_noise = (x_t - torch.sqrt(alpha_bar_t_batch)*images)/torch.sqrt(1 - alpha_bar_t_batch)
                     loss, loss_non0, loss_0 = noise_predictor_loss(mu_theta, true_noise)
             else:
-                mu_theta, var_theta = model(x_t, t_batch) #[B, 2*C_in, H, W]
+                mu_theta, var_theta = model(x_t, t_batch)
                 log_sigma_square = compute_log_sigma_square(var_theta, t_batch, log_sigma_square_t_clipped, alpha_t, use_single_batch=False)
 
-                true_noise = (x_t - torch.sqrt(alpha_bar_t_batch)*images)/torch.sqrt(1 - alpha_bar_t_batch)
+                true_noise = (x_t - torch.sqrt(alpha_bar_t_batch) * images) / torch.sqrt(1 - alpha_bar_t_batch)
                 loss_simple, loss_non0, loss_0 = noise_predictor_loss(mu_theta, true_noise)
+            
+                x0_pred = (x_t - torch.sqrt(1 - alpha_bar_t_batch) * mu_theta) / torch.sqrt(alpha_bar_t_batch)
 
-                x0_pred = (x_t - torch.sqrt(1 - alpha_bar_t_batch)*mu_theta) / torch.sqrt(alpha_bar_t_batch)
-                mu_theta_pred, _ = compute_mu_q(x0_pred, x_t, alpha_t, alpha_bar_t, alpha_bar_t_minus_1)
+                alpha_t_batch = alpha_t[t_batch].view(-1, 1, 1, 1)
+                alpha_bar_t_minus_1_batch = alpha_bar_t_minus_1[t_batch].view(-1, 1, 1, 1)
+                
+                mu_theta_pred, _ = compute_mu_q(
+                    original_x=x0_pred,
+                    noisy_x=x_t,
+                    alpha_t=alpha_t_batch,
+                    alpha_bar_t=alpha_bar_t_batch,
+                    alpha_bar_t_minus_1=alpha_bar_t_minus_1_batch,
+                )
 
                 loss_vb, _, _ = vlb_openai_like(
                     mu_theta=mu_theta_pred.detach(),
@@ -91,7 +101,7 @@ def train(config):
                 )
 
                 # weight VB term like RESCALED_MSE: * (T / 1000)
-                lambda_vb = T / 1000.0
+                lambda_vb = 1000.0
                 loss = loss_simple + lambda_vb * loss_vb
                 
             loss.backward()
