@@ -16,7 +16,6 @@ pip install -r requirements.txt
 ## Code structure
 
 ```
-.
 ├── README.md
 ├── config
 │   └── mnist.yml
@@ -31,8 +30,8 @@ pip install -r requirements.txt
 │   ├── __init__.py
 │   └── unet.py
 ├── requirements.txt
-├── sampling_mean_predictor.py
-├── sampling_noise_predictor.py
+├── sample.py
+├── train_conditional.py
 └── train.py
 ```
 
@@ -42,20 +41,27 @@ For training the model, you can directly run the following command:
 python train.py --config_file config/mnist.yml
 ``` 
 
-An example of the expected config file can be seen in `config/mnist.yml`
+For conditional training (e.g. class-conditional generation), you can run:
+```bash
+python train_conditional.py --config_file config/mnist_conditional.yml
+```
 
 ## Sampling
-The sampling strategy depends on the loss the model is trained on. Run the correct code accordingly.
-
-If the model is trained on the `'noise_prediction_loss'`:
+We have implemented all sampling methods in a single script `sample.py`. You can run the following command to sample images using the appropriate sampling method:
 ```bash
-python sampling_noise_predictor.py
+python sample.py \
+    --config_path config/mnist_conditional.yml \
+    --sample_method conditional_score_matching \
+    --save_folder saved_images \
+    --batch_size 128 \
+    --label 2 \
+    --w 5.0
 ```
-
-If the model is trained on the `'mean_predictor_loss'`:
-```bash
-python sampling_mean_predictor.py
-```
+Things to take care of:
+* Make sure you set `use_guidance` to `True` in the config file if you are using `conditional_score_matching` as the sampling method.
+* Make sure to set `use_conditional` to `False` in the config file if you are loading an unconditional model.
+* The `checkpoint_path` in the config file should point to the trained model checkpoint.
+* The `w` parameter is the guidance weight for conditional score matching. Higher values of `w` lead to stronger conditioning on the label.
 
 ## Config files
 
@@ -81,7 +87,6 @@ Following is the description of the parameters:
 
 **Training Parameters**
 * `lr` : Learning rate
-
 * `epochs`: Number of epochs
 
 * `batch_size`: Batch size

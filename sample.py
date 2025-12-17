@@ -139,7 +139,7 @@ def score_matching_step(i, T, x, model, generated_images,
         generated_images.append(to_append)
     return x_new
 
-def sample(config, method, batch_size=8):
+def sample(config, method, batch_size=8, label=1, w=5.0):
     diffusion_params = config['diffusion_params']
     T = diffusion_params['T'] # TODO: check
     learned_variance = config['model'].get('learned_variance', False) # or we can do model.learned_variance
@@ -166,8 +166,8 @@ def sample(config, method, batch_size=8):
             elif method == 'score_matching':
                 x = score_matching_step(i, T, x, model, generated_images, alpha_t, sigma_square_t)
             elif method == 'conditional_score_matching':
-                y = torch.tensor([0], device=device)  # generate class '2'
-                x = conditional_score_matching_step(i, T, x, model, generated_images, alpha_t, sigma_square_t, y, w=-1.0)
+                y = torch.tensor([label], device=device)  # generate class '2'
+                x = conditional_score_matching_step(i, T, x, model, generated_images, alpha_t, sigma_square_t, y, w=w)
             else:
                 raise ValueError(f"Unknown sampling method: {method}")
             
@@ -180,10 +180,12 @@ if __name__ == "__main__":
     argparse.add_argument('--save_folder', type=str, default='../checkpoints/images_gen', help='Path to the configuration file.')
     argparse.add_argument('--show_images', action='store_true', help='If set, display images; otherwise save them to --save_folder.')
     argparse.add_argument('--batch_size', type=int, default=8, help='Batch size for sampling.')
+    argparse.add_argument('--label', type=int, default=1, help='Class label for conditional generation.')
+    argparse.add_argument('--w', type=float, default=5.0, help='Guidance weight for conditional score matching.')
     args = argparse.parse_args()
 
     config = parse_config(args.config_path)
-    final_image, generated_images = sample(config=config, method=args.sample_method, batch_size=args.batch_size)
+    final_image, generated_images = sample(config=config, method=args.sample_method, batch_size=args.batch_size, label=args.label)
     if args.show_images:
         plot_generated_images(final_image)
     else:
