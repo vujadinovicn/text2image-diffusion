@@ -1,5 +1,8 @@
 # Denoising Diffusion Probabilistic Models
 
+## Paper & Poster
+You can check our report and presentation poster [here](https://github.com/vujadinovicn/text2image-diffusion/tree/main/docs). 
+
 ## Dependencies
 You can either create a new conda environment using the `environment.yml` file
 
